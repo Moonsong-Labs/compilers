@@ -20,8 +20,8 @@ pub use output::{contracts, info, sources};
 
 pub mod project;
 
-/// The name of the `solc` binary on the system
-pub const SOLC: &str = "solc";
+/// The name of the `zksolc` binary on the system
+pub const ZKSOLC: &str = "zksolc";
 
 /// Support for configuring the EVM version
 /// <https://blog.soliditylang.org/2018/03/08/solidity-0.4.21-release-announcement/>
@@ -134,45 +134,36 @@ impl fmt::Display for SolcVersion {
     }
 }
 
-/// Abstraction over `solc` command line utility
+/// Abstraction over `zksolc` command line utility
 ///
 /// Supports sync and async functions.
 ///
 /// By default the solc path is configured as follows, with descending priority:
-///   1. `SOLC_PATH` environment variable
-///   2. [svm](https://github.com/roynalnaruto/svm-rs)'s  `global_version` (set via `svm use
-///      <version>`), stored at `<svm_home>/.global_version`
-///   3. `solc` otherwise
+///   1. `ZKSOLC_PATH` environment variable
+///   2. `zksolc` otherwise
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Solc {
-    /// Path to the `solc` executable
-    pub solc: PathBuf,
-    /// The base path to set when invoking solc, see also <https://docs.soliditylang.org/en/v0.8.11/path-resolution.html#base-path-and-include-paths>
+pub struct ZkSolc {
+    /// Path to the `zksolc` executable
+    pub zksolc: PathBuf,
+    /// The base path to set when invoking zksolc, see also <https://docs.soliditylang.org/en/v0.8.11/path-resolution.html#base-path-and-include-paths>
     pub base_path: Option<PathBuf>,
-    /// Additional arguments passed to the `solc` exectuable
+    /// Additional arguments passed to the `zksolc` exectuable
     pub args: Vec<String>,
 }
 
-impl Default for Solc {
+impl Default for ZkSolc {
     fn default() -> Self {
-        if let Ok(solc) = std::env::var("SOLC_PATH") {
-            return Solc::new(solc);
+        if let Ok(solc) = std::env::var("ZKSOLC_PATH") {
+            return ZkSolc::new(solc);
         }
 
-        if let Some(solc) = Solc::svm_global_version()
-            .and_then(|vers| Solc::find_svm_installed_version(vers.to_string()).ok())
-            .flatten()
-        {
-            return solc;
-        }
-
-        Solc::new(SOLC)
+        ZkSolc::new(ZKSOLC)
     }
 }
 
-impl fmt::Display for Solc {
+impl fmt::Display for ZkSolc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.solc.display())?;
+        write!(f, "{}", self.zksolc.display())?;
         if !self.args.is_empty() {
             write!(f, " {}", self.args.join(" "))?;
         }
@@ -180,10 +171,10 @@ impl fmt::Display for Solc {
     }
 }
 
-impl Solc {
+impl ZkSolc {
     /// A new instance which points to `solc`
     pub fn new(path: impl Into<PathBuf>) -> Self {
-        Solc { solc: path.into(), base_path: None, args: Vec::new() }
+        ZkSolc { zksolc: path.into(), base_path: None, args: Vec::new() }
     }
 
     /// Sets solc's base path
@@ -298,7 +289,7 @@ impl Solc {
         if !solc.is_file() {
             return Ok(None);
         }
-        Ok(Some(Solc::new(solc)))
+        Ok(Some(ZkSolc::new(solc)))
     }
 
     /// Returns the path for a [svm](https://github.com/roynalnaruto/svm-rs) installed version.
@@ -317,10 +308,10 @@ impl Solc {
     #[cfg(feature = "svm-solc")]
     pub fn find_or_install_svm_version(version: impl AsRef<str>) -> Result<Self> {
         let version = version.as_ref();
-        if let Some(solc) = Solc::find_svm_installed_version(version)? {
+        if let Some(solc) = ZkSolc::find_svm_installed_version(version)? {
             Ok(solc)
         } else {
-            Ok(Solc::blocking_install(&version.parse::<Version>()?)?)
+            Ok(ZkSolc::blocking_install(&version.parse::<Version>()?)?)
         }
     }
 
@@ -426,7 +417,7 @@ impl Solc {
         match svm::install(version).await {
             Ok(path) => {
                 crate::report::solc_installation_success(version);
-                Ok(Solc::new(path))
+                Ok(ZkSolc::new(path))
             }
             Err(err) => {
                 crate::report::solc_installation_error(version, &err.to_string());
@@ -448,7 +439,7 @@ impl Solc {
         match RuntimeOrHandle::new().block_on(svm::install(version)) {
             Ok(path) => {
                 crate::report::solc_installation_success(version);
-                Ok(Solc::new(path))
+                Ok(ZkSolc::new(path))
             }
             Err(err) => {
                 crate::report::solc_installation_error(version, &err.to_string());
@@ -567,7 +558,7 @@ impl Solc {
     /// Compiles with `--standard-json` and returns the raw `stdout` output.
     #[instrument(name = "compile", level = "debug", skip_all)]
     pub fn compile_output<T: Serialize>(&self, input: &T) -> Result<Vec<u8>> {
-        let mut cmd = Command::new(&self.solc);
+        let mut cmd = Command::new(&self.zksolc);
         if let Some(base_path) = &self.base_path {
             cmd.current_dir(base_path);
             cmd.arg("--base-path").arg(base_path);
@@ -601,7 +592,7 @@ impl Solc {
     /// Invokes `solc --version` and parses the output as a SemVer [`Version`].
     #[instrument(level = "debug", skip_all)]
     pub fn version(&self) -> Result<Version> {
-        let mut cmd = Command::new(&self.solc);
+        let mut cmd = Command::new(&self.zksolc);
         cmd.arg("--version").stdin(Stdio::piped()).stderr(Stdio::piped()).stdout(Stdio::piped());
         debug!(?cmd, "getting Solc version");
         let output = cmd.output().map_err(self.map_io_err())?;
@@ -612,12 +603,12 @@ impl Solc {
     }
 
     fn map_io_err(&self) -> impl FnOnce(std::io::Error) -> SolcError + '_ {
-        move |err| SolcError::io(err, &self.solc)
+        move |err| SolcError::io(err, &self.zksolc)
     }
 }
 
 #[cfg(feature = "async")]
-impl Solc {
+impl ZkSolc {
     /// Convenience function for compiling all sources under the given path
     pub async fn async_compile_source(&self, path: impl AsRef<Path>) -> Result<CompilerOutput> {
         self.async_compile(&CompilerInput::with_sources(Source::async_read_all_from(path).await?))
@@ -696,7 +687,7 @@ impl Solc {
     /// ```
     pub async fn compile_many<I>(jobs: I, n: usize) -> crate::many::CompiledMany
     where
-        I: IntoIterator<Item = (Solc, CompilerInput)>,
+        I: IntoIterator<Item = (ZkSolc, CompilerInput)>,
     {
         use futures_util::stream::StreamExt;
 
@@ -727,7 +718,7 @@ fn version_from_output(output: Output) -> Result<Version> {
             .lines()
             .filter(|l| !l.trim().is_empty())
             .last()
-            .ok_or_else(|| SolcError::msg("Version not found in Solc output"))?;
+            .ok_or_else(|| SolcError::msg("Version not found in zksolc output"))?;
         // NOTE: semver doesn't like `+` in g++ in build metadata which is invalid semver
         Ok(Version::from_str(&version.trim_start_matches("Version: ").replace(".g++", ".gcc"))?)
     } else {
@@ -735,15 +726,15 @@ fn version_from_output(output: Output) -> Result<Version> {
     }
 }
 
-impl AsRef<Path> for Solc {
+impl AsRef<Path> for ZkSolc {
     fn as_ref(&self) -> &Path {
-        &self.solc
+        &self.zksolc
     }
 }
 
-impl<T: Into<PathBuf>> From<T> for Solc {
+impl<T: Into<PathBuf>> From<T> for ZkSolc {
     fn from(solc: T) -> Self {
-        Solc::new(solc.into())
+        ZkSolc::new(solc.into())
     }
 }
 
@@ -754,13 +745,13 @@ mod tests {
 
     #[test]
     fn test_version_parse() {
-        let req = Solc::version_req(">=0.6.2 <0.8.21").unwrap();
+        let req = ZkSolc::version_req(">=0.6.2 <0.8.21").unwrap();
         let semver_req: VersionReq = ">=0.6.2,<0.8.21".parse().unwrap();
         assert_eq!(req, semver_req);
     }
 
-    fn solc() -> Solc {
-        Solc::default()
+    fn solc() -> ZkSolc {
+        ZkSolc::default()
     }
 
     #[test]
@@ -851,7 +842,7 @@ mod tests {
         let sources = versions.iter().map(|version| source(version));
 
         sources.zip(versions).for_each(|(source, version)| {
-            let version_req = Solc::source_version_req(&source).unwrap();
+            let version_req = ZkSolc::source_version_req(&source).unwrap();
             assert_eq!(version_req, VersionReq::from_str(version).unwrap());
         });
 
@@ -859,7 +850,7 @@ mod tests {
         // requires them to be separated with a comma
         let version_range = ">=0.8.0 <0.9.0";
         let source = source(version_range);
-        let version_req = Solc::source_version_req(&source).unwrap();
+        let version_req = ZkSolc::source_version_req(&source).unwrap();
         assert_eq!(version_req, VersionReq::from_str(">=0.8.0,<0.9.0").unwrap());
     }
 
@@ -880,7 +871,7 @@ mod tests {
             (">=0.5.0", "0.8.24"),
         ] {
             let source = source(pragma);
-            let res = Solc::detect_version(&source).unwrap();
+            let res = ZkSolc::detect_version(&source).unwrap();
             assert_eq!(res, Version::from_str(expected).unwrap());
         }
     }
@@ -896,9 +887,9 @@ mod tests {
             .map(|versions| !versions.contains(&version))
             .unwrap_or_default()
         {
-            Solc::blocking_install(&version).unwrap();
+            ZkSolc::blocking_install(&version).unwrap();
         }
-        let res = Solc::find_svm_installed_version(version.to_string()).unwrap().unwrap();
+        let res = ZkSolc::find_svm_installed_version(version.to_string()).unwrap().unwrap();
         let expected = svm::SVM_DATA_DIR.join(ver).join(format!("solc-{ver}"));
         assert_eq!(res.solc, expected);
     }
@@ -908,7 +899,7 @@ mod tests {
     fn can_install_solc_in_tokio_rt() {
         let version = Version::from_str("0.8.6").unwrap();
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let result = rt.block_on(async { Solc::blocking_install(&version) });
+        let result = rt.block_on(async { ZkSolc::blocking_install(&version) });
         assert!(result.is_ok());
     }
 
@@ -916,7 +907,7 @@ mod tests {
     fn does_not_find_not_installed_version() {
         let ver = "1.1.1";
         let version = Version::from_str(ver).unwrap();
-        let res = Solc::find_svm_installed_version(version.to_string()).unwrap();
+        let res = ZkSolc::find_svm_installed_version(version.to_string()).unwrap();
         assert!(res.is_none());
     }
 
@@ -929,7 +920,7 @@ mod tests {
 
         let required = VersionReq::from_str(">=0.4.24").unwrap();
 
-        let got = Solc::find_matching_installation(&versions, &required).unwrap();
+        let got = ZkSolc::find_matching_installation(&versions, &required).unwrap();
         assert_eq!(got, versions[2]);
     }
 
@@ -941,7 +932,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         let required = VersionReq::from_str(">=0.6.0").unwrap();
-        let got = Solc::find_matching_installation(&versions, &required);
+        let got = ZkSolc::find_matching_installation(&versions, &required);
         assert!(got.is_none());
     }
 

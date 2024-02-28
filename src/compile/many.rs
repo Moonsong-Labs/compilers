@@ -1,7 +1,7 @@
-use crate::{error::Result, CompilerInput, CompilerOutput, Solc};
+use crate::{error::Result, CompilerInput, CompilerOutput, ZkSolc};
 
-/// The result of a `solc` process bundled with its `Solc` and `CompilerInput`
-type CompileElement = (Result<CompilerOutput>, Solc, CompilerInput);
+/// The result of a `solc` process bundled with its `ZkSolc` and `CompilerInput`
+type CompileElement = (Result<CompilerOutput>, ZkSolc, CompilerInput);
 
 /// The bundled output of multiple `solc` processes.
 #[derive(Debug)]

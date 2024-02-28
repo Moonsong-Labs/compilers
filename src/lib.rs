@@ -74,7 +74,7 @@ pub struct Project<T: ArtifactOutput = ConfigurableArtifacts> {
     /// The layout of the project
     pub paths: ProjectPathsConfig,
     /// Where to find solc
-    pub solc: Solc,
+    pub solc: ZkSolc,
     /// How solc invocation should be configured.
     pub solc_config: SolcConfig,
     /// Whether caching is enabled
@@ -183,7 +183,7 @@ impl<T: ArtifactOutput> Project<T> {
     /// Applies the configured arguments to the given `Solc`
     ///
     /// See [Self::configure_solc_with_version()]
-    pub(crate) fn configure_solc(&self, solc: Solc) -> Solc {
+    pub(crate) fn configure_solc(&self, solc: ZkSolc) -> ZkSolc {
         let version = solc.version().ok();
         self.configure_solc_with_version(solc, version, Default::default())
     }
@@ -198,10 +198,10 @@ impl<T: ArtifactOutput> Project<T> {
     /// This also accepts additional `include_paths`
     pub(crate) fn configure_solc_with_version(
         &self,
-        mut solc: Solc,
+        mut solc: ZkSolc,
         version: Option<Version>,
         mut include_paths: IncludePaths,
-    ) -> Solc {
+    ) -> ZkSolc {
         if !solc.args.iter().any(|arg| arg == "--allow-paths") {
             if let Some([allow, libs]) = self.allowed_paths.args() {
                 solc = solc.arg(allow).arg(libs);
@@ -441,7 +441,7 @@ impl<T: ArtifactOutput> Project<T> {
     /// ```
     pub fn compile_with_version(
         &self,
-        solc: &Solc,
+        solc: &ZkSolc,
         sources: Sources,
     ) -> Result<ProjectCompileOutput<T>> {
         project::ProjectCompiler::with_sources_and_solc(self, sources, solc.clone())?.compile()
@@ -565,7 +565,7 @@ pub struct ProjectBuilder<T: ArtifactOutput = ConfigurableArtifacts> {
     /// The layout of the
     paths: Option<ProjectPathsConfig>,
     /// Where to find solc
-    solc: Option<Solc>,
+    solc: Option<ZkSolc>,
     /// How solc invocation should be configured.
     solc_config: Option<SolcConfig>,
     /// Whether caching is enabled, default is true.
@@ -625,7 +625,7 @@ impl<T: ArtifactOutput> ProjectBuilder<T> {
     }
 
     #[must_use]
-    pub fn solc(mut self, solc: impl Into<Solc>) -> Self {
+    pub fn solc(mut self, solc: impl Into<ZkSolc>) -> Self {
         self.solc = Some(solc.into());
         self
     }

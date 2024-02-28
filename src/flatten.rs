@@ -6,7 +6,7 @@ use crate::{
         MemberAccess, Source, SourceUnit, SourceUnitPart, Sources,
     },
     error::SolcError,
-    utils, Graph, Project, ProjectCompileOutput, ProjectPathsConfig, Result, Solc,
+    utils, Graph, Project, ProjectCompileOutput, ProjectPathsConfig, Result, ZkSolc,
 };
 use itertools::Itertools;
 use std::{
@@ -806,7 +806,7 @@ pub fn combine_version_pragmas(pragmas: Vec<&str>) -> Option<String> {
     let mut versions = pragmas
         .into_iter()
         .filter_map(|p| {
-            Solc::version_req(
+            ZkSolc::version_req(
                 p.replace("pragma", "").replace("solidity", "").replace(';', "").trim(),
             )
             .ok()

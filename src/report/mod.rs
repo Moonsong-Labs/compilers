@@ -14,7 +14,7 @@
 
 // <https://github.com/tokio-rs/tracing/blob/master/tracing-core/src/dispatch.rs>
 
-use crate::{remappings::Remapping, CompilerInput, CompilerOutput, Solc};
+use crate::{remappings::Remapping, CompilerInput, CompilerOutput, ZkSolc};
 use semver::Version;
 use std::{
     any::{Any, TypeId},
@@ -94,9 +94,9 @@ where
 ///
 /// A `Reporter` is entirely passive and only listens to incoming "events".
 pub trait Reporter: 'static + std::fmt::Debug {
-    /// Callback invoked right before [`Solc::compile()`] is called
+    /// Callback invoked right before [`ZkSolc::compile()`] is called
     ///
-    /// This contains the [Solc] its [Version] the complete [CompilerInput] and all files that
+    /// This contains the [ZkSolc] its [Version] the complete [CompilerInput] and all files that
     /// triggered the compile job. The dirty files are only provided to give a better feedback what
     /// was actually compiled.
     ///
@@ -108,30 +108,30 @@ pub trait Reporter: 'static + std::fmt::Debug {
     /// matches the dirty files set.
     fn on_solc_spawn(
         &self,
-        _solc: &Solc,
+        _solc: &ZkSolc,
         _version: &Version,
         _input: &CompilerInput,
         _dirty_files: &[PathBuf],
     ) {
     }
 
-    /// Invoked with the `CompilerOutput` if [`Solc::compile()`] was successful
+    /// Invoked with the `CompilerOutput` if [`ZkSolc::compile()`] was successful
     fn on_solc_success(
         &self,
-        _solc: &Solc,
+        _solc: &ZkSolc,
         _version: &Version,
         _output: &CompilerOutput,
         _duration: &Duration,
     ) {
     }
 
-    /// Invoked before a new [`Solc`] bin is installed
+    /// Invoked before a new [`ZkSolc`] bin is installed
     fn on_solc_installation_start(&self, _version: &Version) {}
 
-    /// Invoked after a new [`Solc`] bin was successfully installed
+    /// Invoked after a new [`ZkSolc`] bin was successfully installed
     fn on_solc_installation_success(&self, _version: &Version) {}
 
-    /// Invoked after a [`Solc`] installation failed
+    /// Invoked after a [`ZkSolc`] installation failed
     fn on_solc_installation_error(&self, _version: &Version, _error: &str) {}
 
     /// Invoked if imports couldn't be resolved with the given remappings, where `imports` is the
@@ -182,7 +182,7 @@ impl dyn Reporter {
 }
 
 pub(crate) fn solc_spawn(
-    solc: &Solc,
+    solc: &ZkSolc,
     version: &Version,
     input: &CompilerInput,
     dirty_files: &[PathBuf],
@@ -191,7 +191,7 @@ pub(crate) fn solc_spawn(
 }
 
 pub(crate) fn solc_success(
-    solc: &Solc,
+    solc: &ZkSolc,
     version: &Version,
     output: &CompilerOutput,
     duration: &Duration,
@@ -343,10 +343,10 @@ impl Default for BasicStdoutReporter {
 }
 
 impl Reporter for BasicStdoutReporter {
-    /// Callback invoked right before [`Solc::compile()`] is called
+    /// Callback invoked right before [`ZkSolc::compile()`] is called
     fn on_solc_spawn(
         &self,
-        _solc: &Solc,
+        _solc: &ZkSolc,
         version: &Version,
         input: &CompilerInput,
         dirty_files: &[PathBuf],
@@ -363,24 +363,24 @@ impl Reporter for BasicStdoutReporter {
 
     fn on_solc_success(
         &self,
-        _solc: &Solc,
+        _solc: &ZkSolc,
         version: &Version,
         output: &CompilerOutput,
         duration: &Duration,
     ) {
         self.solc_io_report.log_compiler_output(output, version);
         println!(
-            "Solc {}.{}.{} finished in {duration:.2?}",
+            "ZkSolc {}.{}.{} finished in {duration:.2?}",
             version.major, version.minor, version.patch
         );
     }
 
-    /// Invoked before a new [`Solc`] bin is installed
+    /// Invoked before a new [`ZkSolc`] bin is installed
     fn on_solc_installation_start(&self, version: &Version) {
         println!("installing solc version \"{version}\"");
     }
 
-    /// Invoked before a new [`Solc`] bin was successfully installed
+    /// Invoked before a new [`ZkSolc`] bin was successfully installed
     fn on_solc_installation_success(&self, version: &Version) {
         println!("Successfully installed solc {version}");
     }

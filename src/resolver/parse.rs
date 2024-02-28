@@ -1,4 +1,4 @@
-use crate::{utils, Solc};
+use crate::{utils, ZkSolc};
 use semver::VersionReq;
 use solang_parser::pt::{
     ContractPart, ContractTy, FunctionAttribute, FunctionDefinition, Import, ImportPath, Loc,
@@ -121,7 +121,7 @@ impl SolData {
                 .first()
                 .map(|(cap, l)| SolDataUnit::new(l.as_str().to_owned(), cap.range()))
         });
-        let version_req = version.as_ref().and_then(|v| Solc::version_req(v.data()).ok());
+        let version_req = version.as_ref().and_then(|v| ZkSolc::version_req(v.data()).ok());
 
         Self { version_req, version, experimental, imports, license, libraries, contracts }
     }

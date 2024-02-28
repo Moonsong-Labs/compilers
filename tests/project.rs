@@ -14,7 +14,7 @@ use foundry_compilers::{
     project_util::*,
     remappings::Remapping,
     utils, Artifact, CompilerInput, ConfigurableArtifacts, ExtraOutputValues, Graph, Project,
-    ProjectCompileOutput, ProjectPathsConfig, Solc, TestFileFilter,
+    ProjectCompileOutput, ProjectPathsConfig, ZkSolc, TestFileFilter,
 };
 use pretty_assertions::assert_eq;
 use semver::Version;
@@ -2559,7 +2559,7 @@ fn can_create_standard_json_input_with_external_file() {
     );
 
     // can compile using the created json
-    let compiler_errors = Solc::default()
+    let compiler_errors = ZkSolc::default()
         .compile(&std_json)
         .unwrap()
         .errors
@@ -2581,7 +2581,7 @@ fn can_compile_std_json_input() {
     assert!(input.sources.contains_key(Path::new("lib/ds-test/src/test.sol")));
 
     // should be installed
-    if let Some(solc) = Solc::find_svm_installed_version("0.8.10").ok().flatten() {
+    if let Some(solc) = ZkSolc::find_svm_installed_version("0.8.10").ok().flatten() {
         let out = solc.compile(&input).unwrap();
         assert!(!out.has_error());
         assert!(out.sources.contains_key("lib/ds-test/src/test.sol"));
@@ -2646,7 +2646,7 @@ fn can_create_standard_json_input_with_symlink() {
     );
 
     // can compile using the created json
-    let compiler_errors = Solc::default()
+    let compiler_errors = ZkSolc::default()
         .compile(&std_json)
         .unwrap()
         .errors
@@ -2772,7 +2772,7 @@ fn test_compiler_severity_filter_and_ignored_error_codes() {
 }
 
 fn remove_solc_if_exists(version: &Version) {
-    if Solc::find_svm_installed_version(version.to_string()).unwrap().is_some() {
+    if ZkSolc::find_svm_installed_version(version.to_string()).unwrap().is_some() {
         svm::remove_version(version).expect("failed to remove version")
     }
 }

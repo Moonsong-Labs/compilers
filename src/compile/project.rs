@@ -110,8 +110,8 @@ use crate::{
     output::AggregatedCompilerOutput,
     report,
     resolver::GraphEdges,
-    ArtifactOutput, CompilerInput, Graph, Project, ProjectCompileOutput, ProjectPathsConfig, Solc,
-    Sources,
+    ArtifactOutput, CompilerInput, Graph, Project, ProjectCompileOutput, ProjectPathsConfig,
+    Sources, ZkSolc,
 };
 use rayon::prelude::*;
 use std::{collections::btree_map::BTreeMap, path::PathBuf, time::Instant};
@@ -163,7 +163,7 @@ impl<'a, T: ArtifactOutput> ProjectCompiler<'a, T> {
     pub fn with_sources_and_solc(
         project: &'a Project<T>,
         sources: Sources,
-        solc: Solc,
+        solc: ZkSolc,
     ) -> Result<Self> {
         let version = solc.version()?;
         let (sources, edges) = Graph::resolve_sources(&project.paths, sources)?.into_sources();
