@@ -720,7 +720,13 @@ fn version_from_output(output: Output) -> Result<Version> {
             .last()
             .ok_or_else(|| SolcError::msg("Version not found in zksolc output"))?;
         // NOTE: semver doesn't like `+` in g++ in build metadata which is invalid semver
-        Ok(Version::from_str(&version.trim_start_matches("Version: ").replace(".g++", ".gcc"))?)
+        Ok(Version::from_str(
+            &version
+                .split_whitespace()
+                .nth(3)
+                .ok_or_else(|| SolcError::msg("Unable to retrieve version from zksolc output"))?
+                .trim_start_matches('v'),
+        )?)
     } else {
         Err(SolcError::solc_output(&output))
     }
