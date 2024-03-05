@@ -35,17 +35,17 @@ impl VersionedSourceFiles {
     }
 
     /// Returns an iterator over the source files' IDs and path.
-    pub fn into_ids(self) -> impl Iterator<Item = (u32, String)> {
+    pub fn into_ids(self) -> impl Iterator<Item = (u64, String)> {
         self.into_sources().map(|(path, source)| (source.id, path))
     }
 
     /// Returns an iterator over the source files' paths and IDs.
-    pub fn into_paths(self) -> impl Iterator<Item = (String, u32)> {
+    pub fn into_paths(self) -> impl Iterator<Item = (String, u64)> {
         self.into_ids().map(|(id, path)| (path, id))
     }
 
     /// Returns an iterator over the source files' IDs and path.
-    pub fn into_ids_with_version(self) -> impl Iterator<Item = (u32, String, Version)> {
+    pub fn into_ids_with_version(self) -> impl Iterator<Item = (u64, String, Version)> {
         self.into_sources_with_version().map(|(path, source, version)| (source.id, path, version))
     }
 
@@ -99,12 +99,12 @@ impl VersionedSourceFiles {
     /// let source_file = output.sources.find_id(0).unwrap();
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
-    pub fn find_id(&self, id: u32) -> Option<&SourceFile> {
+    pub fn find_id(&self, id: u64) -> Option<&SourceFile> {
         self.sources().filter(|(_, source)| source.id == id).map(|(_, source)| source).next()
     }
 
     /// Same as [Self::find_id] but also checks for version
-    pub fn find_id_and_version(&self, id: u32, version: &Version) -> Option<&SourceFile> {
+    pub fn find_id_and_version(&self, id: u64, version: &Version) -> Option<&SourceFile> {
         self.sources_with_version()
             .filter(|(_, source, v)| source.id == id && *v == version)
             .map(|(_, source, _)| source)
@@ -146,7 +146,7 @@ impl VersionedSourceFiles {
     /// let source_file = sources.remove_by_id(0).unwrap();
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
-    pub fn remove_by_id(&mut self, id: u32) -> Option<SourceFile> {
+    pub fn remove_by_id(&mut self, id: u64) -> Option<SourceFile> {
         self.0
             .values_mut()
             .filter_map(|sources| {

@@ -1077,7 +1077,7 @@ impl fmt::Display for BytecodeHash {
 
 /// Bindings for [`solc` contract metadata](https://docs.soliditylang.org/en/latest/metadata.html)
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Metadata {
+pub struct SolcMetadata {
     pub compiler: Compiler,
     pub language: String,
     pub output: Output,
@@ -1089,23 +1089,23 @@ pub struct Metadata {
 /// A helper type that ensures lossless (de)serialisation so we can preserve the exact String
 /// metadata value that's being hashed by solc
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LosslessMetadata {
+pub struct LosslessSolcMetadata {
     /// The complete abi as json value
     pub raw_metadata: String,
     /// The deserialised metadata of `raw_metadata`
-    pub metadata: Metadata,
+    pub metadata: SolcMetadata,
 }
 
 // === impl LosslessMetadata ===
 
-impl LosslessMetadata {
+impl LosslessSolcMetadata {
     /// Returns the whole string raw metadata as `serde_json::Value`
     pub fn raw_json(&self) -> serde_json::Result<serde_json::Value> {
         serde_json::from_str(&self.raw_metadata)
     }
 }
 
-impl Serialize for LosslessMetadata {
+impl Serialize for LosslessSolcMetadata {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -1114,7 +1114,7 @@ impl Serialize for LosslessMetadata {
     }
 }
 
-impl<'de> Deserialize<'de> for LosslessMetadata {
+impl<'de> Deserialize<'de> for LosslessSolcMetadata {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -1122,7 +1122,7 @@ impl<'de> Deserialize<'de> for LosslessMetadata {
         struct LosslessMetadataVisitor;
 
         impl<'de> Visitor<'de> for LosslessMetadataVisitor {
-            type Value = LosslessMetadata;
+            type Value = LosslessSolcMetadata;
 
             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(formatter, "metadata string")
@@ -1134,11 +1134,31 @@ impl<'de> Deserialize<'de> for LosslessMetadata {
             {
                 let metadata = serde_json::from_str(value).map_err(serde::de::Error::custom)?;
                 let raw_metadata = value.to_string();
-                Ok(LosslessMetadata { raw_metadata, metadata })
+                Ok(LosslessSolcMetadata { raw_metadata, metadata })
             }
         }
         deserializer.deserialize_str(LosslessMetadataVisitor)
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ZkMetadata {
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "serde_helpers::json_string_opt"
+    )]
+    pub solc_metadata: Option<LosslessSolcMetadata>,
+
+    #[serde(default)]
+    pub optimizer_settings: BTreeMap<String, serde_json::Value>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub solc_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub solc_zkvm_edition: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zk_version: Option<String>,
 }
 
 /// Compiler settings
@@ -1575,6 +1595,9 @@ pub struct CompilerOutput {
     pub sources: BTreeMap<String, SourceFile>,
     #[serde(default)]
     pub contracts: Contracts,
+    pub version: String,
+    pub long_version: String,
+    pub zk_version: String,
 }
 
 impl CompilerOutput {
@@ -1928,7 +1951,7 @@ pub struct StorageType {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct SourceFile {
-    pub id: u32,
+    pub id: u64,
     #[serde(default, with = "serde_helpers::empty_json_object_opt")]
     pub ast: Option<Ast>,
 }
@@ -1955,12 +1978,12 @@ pub struct SourceFiles(pub BTreeMap<String, SourceFile>);
 
 impl SourceFiles {
     /// Returns an iterator over the source files' IDs and path.
-    pub fn into_ids(self) -> impl Iterator<Item = (u32, String)> {
+    pub fn into_ids(self) -> impl Iterator<Item = (u64, String)> {
         self.0.into_iter().map(|(k, v)| (v.id, k))
     }
 
     /// Returns an iterator over the source files' paths and IDs.
-    pub fn into_paths(self) -> impl Iterator<Item = (String, u32)> {
+    pub fn into_paths(self) -> impl Iterator<Item = (String, u64)> {
         self.0.into_iter().map(|(k, v)| (k, v.id))
     }
 }
@@ -2324,7 +2347,7 @@ mod tests {
                 skip_serializing_if = "Option::is_none",
                 with = "serde_helpers::json_string_opt"
             )]
-            pub metadata: Option<LosslessMetadata>,
+            pub metadata: Option<LosslessSolcMetadata>,
         }
 
         let s = r#"{"metadata":"{\"compiler\":{\"version\":\"0.4.18+commit.9cf6e910\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"constant\":true,\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferOwnership\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"}],\"devdoc\":{\"methods\":{\"transferOwnership(address)\":{\"details\":\"Allows the current owner to transfer control of the contract to a newOwner.\",\"params\":{\"newOwner\":\"The address to transfer ownership to.\"}}},\"title\":\"Ownable\"},\"userdoc\":{\"methods\":{}}},\"settings\":{\"compilationTarget\":{\"src/Contract.sol\":\"Ownable\"},\"libraries\":{},\"optimizer\":{\"enabled\":true,\"runs\":1000000},\"remappings\":[\":src/=src/\"]},\"sources\":{\"src/Contract.sol\":{\"keccak256\":\"0x3e0d611f53491f313ae035797ed7ecfd1dfd8db8fef8f82737e6f0cd86d71de7\",\"urls\":[\"bzzr://9c33025fa9d1b8389e4c7c9534a1d70fad91c6c2ad70eb5e4b7dc3a701a5f892\"]}},\"version\":1}"}"#;

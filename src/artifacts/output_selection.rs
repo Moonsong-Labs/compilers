@@ -106,12 +106,7 @@ impl OutputSelection {
     pub fn default_file_output_selection() -> FileOutputSelection {
         BTreeMap::from([(
             "*".to_string(),
-            vec![
-                "abi".to_string(),
-                "evm.bytecode".to_string(),
-                "evm.deployedBytecode".to_string(),
-                "evm.methodIdentifiers".to_string(),
-            ],
+            vec!["abi".to_string(), "evm.methodIdentifiers".to_string()],
         )])
     }
 

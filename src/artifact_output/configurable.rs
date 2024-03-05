@@ -17,7 +17,8 @@ use crate::{
             EvmOutputSelection, EwasmOutputSelection,
         },
         Ast, CompactContractBytecodeCow, DevDoc, Evm, Ewasm, FunctionDebugData, GasEstimates,
-        GeneratedSource, LosslessMetadata, Metadata, Offsets, Settings, StorageLayout, UserDoc,
+        GeneratedSource, LosslessSolcMetadata, Offsets, Settings, SolcMetadata, StorageLayout,
+        UserDoc,
     },
     sources::VersionedSourceFile,
     Artifact, ArtifactOutput, SolcConfig, SolcError, SourceFile,
@@ -55,7 +56,7 @@ pub struct ConfigurableContractArtifact {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub raw_metadata: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Metadata>,
+    pub metadata: Option<SolcMetadata>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub storage_layout: Option<StorageLayout>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -72,7 +73,13 @@ pub struct ConfigurableContractArtifact {
     pub ast: Option<Ast>,
     /// The identifier of the source file
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<u32>,
+    pub id: Option<u64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hash: Option<String>,
+
+    #[serde(rename = "factoryDependencies", default)]
+    pub factory_dependencies: BTreeMap<String, String>,
 }
 
 impl ConfigurableContractArtifact {
@@ -271,10 +278,14 @@ impl ArtifactOutput for ConfigurableArtifacts {
             evm,
             ewasm,
             ir_optimized,
+            hash,
+            factory_dependencies,
         } = contract;
 
         if self.additional_values.metadata {
-            if let Some(LosslessMetadata { raw_metadata, metadata }) = metadata {
+            if let Some(LosslessSolcMetadata { raw_metadata, metadata }) =
+                metadata.and_then(|zk| zk.solc_metadata)
+            {
                 artifact_raw_metadata = Some(raw_metadata);
                 artifact_metadata = Some(metadata);
             }
@@ -353,6 +364,8 @@ impl ArtifactOutput for ConfigurableArtifacts {
             id: source_file.as_ref().map(|s| s.id),
             ast: source_file.and_then(|s| s.ast.clone()),
             generated_sources: generated_sources.unwrap_or_default(),
+            hash,
+            factory_dependencies,
         }
     }
 
@@ -607,8 +620,11 @@ impl ExtraOutputFiles {
         }
 
         if self.metadata {
-            if let Some(ref metadata) = contract.metadata {
+            if let Some(ref metadata) =
+                contract.metadata.as_ref().and_then(|m| m.solc_metadata.as_ref())
+            {
                 let file = file.with_extension("metadata.json");
+                //TODO: write zkmetadata?
                 fs::write(&file, serde_json::to_string_pretty(&metadata.raw_json()?)?)
                     .map_err(|err| SolcError::io(err, file))?
             }

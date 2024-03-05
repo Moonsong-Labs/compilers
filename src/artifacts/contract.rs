@@ -4,12 +4,17 @@ use crate::artifacts::{
     bytecode::{
         Bytecode, BytecodeObject, CompactBytecode, CompactDeployedBytecode, DeployedBytecode,
     },
-    serde_helpers, DevDoc, Evm, Ewasm, LosslessMetadata, Offsets, StorageLayout, UserDoc,
+    serde_helpers, DevDoc, Evm, Ewasm, LosslessSolcMetadata, Offsets, StorageLayout, UserDoc,
 };
 use alloy_json_abi::JsonAbi;
 use alloy_primitives::Bytes;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, collections::BTreeMap};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, HashMap},
+};
+
+use super::ZkMetadata;
 
 /// Represents a compiled solidity contract
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -18,28 +23,40 @@ pub struct Contract {
     /// The Ethereum Contract Metadata.
     /// See <https://docs.soliditylang.org/en/develop/metadata.html>
     pub abi: Option<JsonAbi>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "serde_helpers::json_string_opt"
-    )]
-    pub metadata: Option<LosslessMetadata>,
+
+    pub metadata: Option<ZkMetadata>,
+
+    //TODO: remove?
     #[serde(default)]
     pub userdoc: UserDoc,
+    //TODO: remove?
     #[serde(default)]
     pub devdoc: DevDoc,
+
+    //TODO: remove?
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ir: Option<String>,
+    //TODO: remove?
     #[serde(default, skip_serializing_if = "StorageLayout::is_empty")]
     pub storage_layout: StorageLayout,
+
     /// EVM-related outputs
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evm: Option<Evm>,
+
+    //TODO: remove?
     /// Ewasm related outputs
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ewasm: Option<Ewasm>,
+
+    //TODO: remove?
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ir_optimized: Option<String>,
+
+    pub hash: Option<String>,
+
+    #[serde(rename = "factoryDependencies", default)]
+    pub factory_dependencies: BTreeMap<String, String>,
 }
 
 impl<'a> From<&'a Contract> for CompactContractBytecodeCow<'a> {
