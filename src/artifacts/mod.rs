@@ -1049,6 +1049,7 @@ pub enum BytecodeHash {
     Ipfs,
     None,
     Bzzr1,
+    Keccak256,
 }
 
 impl FromStr for BytecodeHash {
@@ -1059,6 +1060,7 @@ impl FromStr for BytecodeHash {
             "none" => Ok(BytecodeHash::None),
             "ipfs" => Ok(BytecodeHash::Ipfs),
             "bzzr1" => Ok(BytecodeHash::Bzzr1),
+            "keccak256" => Ok(BytecodeHash::Keccak256),
             s => Err(format!("Unknown bytecode hash: {s}")),
         }
     }
@@ -1070,6 +1072,7 @@ impl fmt::Display for BytecodeHash {
             BytecodeHash::Ipfs => "ipfs",
             BytecodeHash::None => "none",
             BytecodeHash::Bzzr1 => "bzzr1",
+            BytecodeHash::Keccak256 => "keccak256",
         };
         f.write_str(s)
     }
