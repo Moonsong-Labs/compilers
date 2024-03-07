@@ -632,7 +632,7 @@ impl AggregatedCompilerOutput {
 
     /// adds a new `CompilerOutput` to the aggregated output
     pub fn extend(&mut self, version: Version, output: CompilerOutput) {
-        let CompilerOutput { errors, sources, contracts, version: _, long_version, zk_version } =
+        let CompilerOutput { errors, sources, contracts, version: _, long_version: _, zk_version: _ } =
             output;
         self.errors.extend(errors);
 

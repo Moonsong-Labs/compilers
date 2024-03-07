@@ -721,7 +721,7 @@ fn version_from_output(output: Output) -> Result<Version> {
             .ok_or_else(|| SolcError::msg("Version not found in zksolc output"))?;
         // NOTE: semver doesn't like `+` in g++ in build metadata which is invalid semver
         Ok(Version::from_str(
-            &version
+            version
                 .split_whitespace()
                 .nth(3)
                 .ok_or_else(|| SolcError::msg("Unable to retrieve version from zksolc output"))?

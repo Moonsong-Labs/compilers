@@ -14,7 +14,7 @@ use foundry_compilers::{
     project_util::*,
     remappings::Remapping,
     utils, Artifact, CompilerInput, ConfigurableArtifacts, ExtraOutputValues, Graph, Project,
-    ProjectCompileOutput, ProjectPathsConfig, ZkSolc, TestFileFilter,
+    ProjectCompileOutput, ProjectPathsConfig, TestFileFilter, ZkSolc,
 };
 use pretty_assertions::assert_eq;
 use semver::Version;
