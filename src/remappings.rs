@@ -18,7 +18,7 @@ const JS_LIB_DIR: &str = "node_modules";
 /// Let's imagine you want to use OpenZeppelin's amazing library of smart contracts,
 /// `@openzeppelin/contracts-ethereum-package`:
 ///
-/// ```ignore
+/// ```solidity
 /// pragma solidity 0.5.11;
 ///
 /// import "@openzeppelin/contracts-ethereum-package/contracts/math/SafeMath.sol";

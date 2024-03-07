@@ -273,10 +273,10 @@ impl ZkSolc {
     /// # Examples
     ///
     /// ```no_run
-    /// use foundry_compilers::Solc;
+    /// use foundry_compilers::ZkSolc;
     ///
-    /// let solc = Solc::find_svm_installed_version("0.8.9")?;
-    /// assert_eq!(solc, Some(Solc::new("~/.svm/0.8.9/solc-0.8.9")));
+    /// let solc = ZkSolc::find_svm_installed_version("0.8.9")?;
+    /// assert_eq!(solc, Some(ZkSolc::new("~/.svm/0.8.9/solc-0.8.9")));
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     pub fn find_svm_installed_version(version: impl AsRef<str>) -> Result<Option<Self>> {
@@ -516,9 +516,9 @@ impl ZkSolc {
     /// # Examples
     ///
     /// ```no_run
-    /// use foundry_compilers::{CompilerInput, Solc};
+    /// use foundry_compilers::{CompilerInput, ZkSolc};
     ///
-    /// let solc = Solc::default();
+    /// let solc = ZkSolc::default();
     /// let input = CompilerInput::new("./contracts")?[0].clone();
     /// let output = solc.compile_exact(&input)?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
@@ -534,9 +534,9 @@ impl ZkSolc {
     /// # Examples
     ///
     /// ```no_run
-    /// use foundry_compilers::{CompilerInput, Solc};
+    /// use foundry_compilers::{CompilerInput, ZkSolc};
     ///
-    /// let solc = Solc::default();
+    /// let solc = ZkSolc::default();
     /// let input = CompilerInput::new("./contracts")?;
     /// let output = solc.compile(&input)?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())

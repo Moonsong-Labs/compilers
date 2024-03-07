@@ -431,11 +431,11 @@ impl<T: ArtifactOutput> Project<T> {
     /// # Examples
     ///
     /// ```no_run
-    /// use foundry_compilers::{Project, Solc};
+    /// use foundry_compilers::{Project, ZkSolc};
     ///
     /// let project = Project::builder().build()?;
     /// let sources = project.paths.read_sources()?;
-    /// let solc = Solc::find_svm_installed_version("0.8.11")?.unwrap();
+    /// let solc = ZkSolc::find_svm_installed_version("0.8.11")?.unwrap();
     /// project.compile_with_version(&solc, sources)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
