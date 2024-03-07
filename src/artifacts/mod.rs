@@ -1628,9 +1628,9 @@ pub struct CompilerOutput {
     pub sources: BTreeMap<String, SourceFile>,
     #[serde(default)]
     pub contracts: Contracts,
-    pub version: String,
-    pub long_version: String,
-    pub zk_version: String,
+    pub version: Option<String>,
+    pub long_version: Option<String>,
+    pub zk_version: Option<String>,
 }
 
 impl CompilerOutput {
