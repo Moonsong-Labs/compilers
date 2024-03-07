@@ -284,7 +284,7 @@ impl ArtifactOutput for ConfigurableArtifacts {
 
         if self.additional_values.metadata {
             if let Some(LosslessSolcMetadata { raw_metadata, metadata }) =
-                metadata.and_then(|zk| zk.solc_metadata)
+                metadata.and_then(|zk| zk.take_solc_metadata())
             {
                 artifact_raw_metadata = Some(raw_metadata);
                 artifact_metadata = Some(metadata);
@@ -620,9 +620,7 @@ impl ExtraOutputFiles {
         }
 
         if self.metadata {
-            if let Some(ref metadata) =
-                contract.metadata.as_ref().and_then(|m| m.solc_metadata.as_ref())
-            {
+            if let Some(metadata) = contract.metadata.as_ref().and_then(|m| m.solc_metadata()) {
                 let file = file.with_extension("metadata.json");
                 //TODO: write zkmetadata?
                 fs::write(&file, serde_json::to_string_pretty(&metadata.raw_json()?)?)

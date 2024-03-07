@@ -4,17 +4,14 @@ use crate::artifacts::{
     bytecode::{
         Bytecode, BytecodeObject, CompactBytecode, CompactDeployedBytecode, DeployedBytecode,
     },
-    serde_helpers, DevDoc, Evm, Ewasm, LosslessSolcMetadata, Offsets, StorageLayout, UserDoc,
+    DevDoc, Evm, Ewasm, Offsets, StorageLayout, UserDoc,
 };
 use alloy_json_abi::JsonAbi;
 use alloy_primitives::Bytes;
 use serde::{Deserialize, Serialize};
-use std::{
-    borrow::Cow,
-    collections::{BTreeMap, HashMap},
-};
+use std::{borrow::Cow, collections::BTreeMap};
 
-use super::ZkMetadata;
+use super::ZkOrSolcMetadata;
 
 /// Represents a compiled solidity contract
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -24,7 +21,7 @@ pub struct Contract {
     /// See <https://docs.soliditylang.org/en/develop/metadata.html>
     pub abi: Option<JsonAbi>,
 
-    pub metadata: Option<ZkMetadata>,
+    pub metadata: Option<ZkOrSolcMetadata>,
 
     //TODO: remove?
     #[serde(default)]

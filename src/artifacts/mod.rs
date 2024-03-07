@@ -1142,6 +1142,36 @@ impl<'de> Deserialize<'de> for LosslessSolcMetadata {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum ZkOrSolcMetadata {
+    Zk(ZkMetadata),
+    Solc(
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "serde_helpers::json_string_opt"
+        )]
+        Option<LosslessSolcMetadata>,
+    ),
+}
+
+impl ZkOrSolcMetadata {
+    pub fn solc_metadata(&self) -> Option<&LosslessSolcMetadata> {
+        match self {
+            ZkOrSolcMetadata::Zk(zk) => zk.solc_metadata.as_ref(),
+            ZkOrSolcMetadata::Solc(meta) => meta.as_ref(),
+        }
+    }
+
+    pub fn take_solc_metadata(self) -> Option<LosslessSolcMetadata> {
+        match self {
+            ZkOrSolcMetadata::Zk(zk) => zk.solc_metadata,
+            ZkOrSolcMetadata::Solc(meta) => meta,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ZkMetadata {
     #[serde(
         default,
