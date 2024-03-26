@@ -114,20 +114,6 @@ impl OutputSelection {
     pub fn empty_file_output_select() -> FileOutputSelection {
         Default::default()
     }
-
-    /// Returns true if this output selection is a subset of the other output selection.
-    /// TODO: correctly process wildcard keys to reduce false negatives
-    pub fn is_subset_of(&self, other: &Self) -> bool {
-        self.0.iter().all(|(file, selection)| {
-            other.0.get(file).map_or(false, |other_selection| {
-                selection.iter().all(|(contract, outputs)| {
-                    other_selection.get(contract).map_or(false, |other_outputs| {
-                        outputs.iter().all(|output| other_outputs.contains(output))
-                    })
-                })
-            })
-        })
-    }
 }
 
 // this will make sure that if the `FileOutputSelection` for a certain file is empty will be
@@ -178,6 +164,60 @@ impl AsMut<BTreeMap<String, FileOutputSelection>> for OutputSelection {
 impl From<BTreeMap<String, FileOutputSelection>> for OutputSelection {
     fn from(s: BTreeMap<String, FileOutputSelection>) -> Self {
         OutputSelection(s)
+    }
+}
+
+pub trait SelectionSubset {
+    /// Returns true if self is a subset of the other.
+    /// TODO: correctly process wildcard keys to reduce false negatives
+    fn is_subset_of(&self, other: &Self) -> bool;
+}
+
+impl<'a> SelectionSubset for &'a OutputSelection {
+    fn is_subset_of(&self, other: &Self) -> bool {
+        self.0.iter().all(|(file, selection)| {
+            other.0.get(file).map_or(false, |other_selection| {
+                selection.iter().all(|(contract, outputs)| {
+                    other_selection.get(contract).map_or(false, |other_outputs| {
+                        outputs.iter().all(|output| other_outputs.contains(output))
+                    })
+                })
+            })
+        })
+    }
+}
+
+impl<'a> SelectionSubset for &'a era_compiler_solidity::SolcStandardJsonInputSettingsSelection {
+    fn is_subset_of(&self, other: &Self) -> bool {
+        match (&self.all, &other.all) {
+            (None, None) | (None, Some(_)) => true,
+            (Some(_), None) => false,
+            (Some(this), Some(other)) => {
+                use std::collections::HashSet;
+
+                let hashsets_subsets =
+                    |this: &Option<HashSet<_>>, other: &Option<HashSet<_>>| match (this, other) {
+                        (None, None) | (None, Some(_)) => true,
+                        (Some(_), None) => false,
+                        (Some(this), Some(other)) => this.is_subset(other),
+                    };
+
+                let per_file = hashsets_subsets(&this.per_file, &other.per_file);
+                let per_contract = hashsets_subsets(&this.per_contract, &other.per_contract);
+
+                per_file && per_contract
+            }
+        }
+    }
+}
+
+impl<T: SelectionSubset> SelectionSubset for Option<T> {
+    fn is_subset_of(&self, other: &Self) -> bool {
+        match (self, other) {
+            (None, None) => true,
+            (Some(this), Some(other)) => this.is_subset_of(other),
+            _ => false,
+        }
     }
 }
 

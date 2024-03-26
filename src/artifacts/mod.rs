@@ -35,6 +35,13 @@ pub use bytecode::*;
 pub use contract::*;
 pub use serde_helpers::{deserialize_bytes, deserialize_opt_bytes};
 
+use era_compiler_solidity::{
+    SolcStandardJsonInputLanguage as ZkSolcLanguage,
+    SolcStandardJsonInputSettings as ZkSolcSettings,
+    SolcStandardJsonInputSettingsOptimizer as ZkSolcOptimizer,
+    SolcStandardJsonInputSource as ZkSource,
+};
+
 /// Solidity files are made up of multiple `source units`, a solidity contract is such a `source
 /// unit`, therefore a solidity file can contain multiple contracts: (1-N*) relationship.
 ///
@@ -60,23 +67,42 @@ const YUL: &str = "Yul";
 /// Input type `solc` expects.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompilerInput {
-    pub language: String,
+    pub language: ZkSolcLanguage,
     pub sources: Sources,
-    pub settings: Settings,
+    pub settings: ZkSolcSettings,
 }
 
 /// Default `language` field is set to `"Solidity"`.
 impl Default for CompilerInput {
     fn default() -> Self {
         CompilerInput {
-            language: SOLIDITY.to_string(),
-            sources: Sources::default(),
-            settings: Settings::default(),
+            language: ZkSolcLanguage::Solidity,
+            sources: Default::default(),
+            settings: Self::default_settings(),
         }
     }
 }
 
 impl CompilerInput {
+    pub fn default_settings() -> ZkSolcSettings {
+        ZkSolcSettings {
+            evm_version: Some("shanghai".try_into().unwrap()),
+            libraries: None,
+            remappings: None,
+            output_selection: None,
+            via_ir: None,
+            optimizer: ZkSolcOptimizer {
+                enabled: false,
+                mode: None,
+                details: None,
+                fallback_to_optimizing_for_size: None,
+                disable_system_request_memoization: None,
+                jump_table_density_threshold: None,
+            },
+            metadata: None,
+        }
+    }
+
     /// Reads all contracts found under the path
     pub fn new(path: impl AsRef<Path>) -> Result<Vec<Self>, SolcIoError> {
         Source::read_all_from(path.as_ref()).map(Self::with_sources)
@@ -99,16 +125,16 @@ impl CompilerInput {
         let mut res = Vec::new();
         if !solidity_sources.is_empty() {
             res.push(Self {
-                language: SOLIDITY.to_string(),
+                language: ZkSolcLanguage::Solidity,
                 sources: solidity_sources,
-                settings: Default::default(),
+                settings: Self::default_settings(),
             });
         }
         if !yul_sources.is_empty() {
             res.push(Self {
-                language: YUL.to_string(),
+                language: ZkSolcLanguage::Yul,
                 sources: yul_sources,
-                settings: Default::default(),
+                settings: Self::default_settings(),
             });
         }
         res
@@ -117,29 +143,29 @@ impl CompilerInput {
     /// This will remove/adjust values in the `CompilerInput` that are not compatible with this
     /// version
     pub fn sanitize(&mut self, version: &Version) {
-        self.settings.sanitize(version)
+        self.settings.normalize(version)
     }
 
     /// Consumes the type and returns a [CompilerInput::sanitized] version
     pub fn sanitized(mut self, version: &Version) -> Self {
-        self.settings.sanitize(version);
+        self.settings.normalize(version);
         self
     }
 
     /// Sets the settings for compilation
     #[must_use]
-    pub fn settings(mut self, mut settings: Settings) -> Self {
+    pub fn settings(mut self, mut settings: ZkSolcSettings) -> Self {
         if self.is_yul() {
-            if !settings.remappings.is_empty() {
+            if !settings.remappings.is_none() {
                 warn!("omitting remappings supplied for the yul sources");
-                settings.remappings = vec![];
+                settings.remappings.take();
             }
-            if let Some(debug) = settings.debug.as_mut() {
-                if debug.revert_strings.is_some() {
-                    warn!("omitting revertStrings supplied for the yul sources");
-                    debug.revert_strings = None;
-                }
-            }
+            // if let Some(debug) = settings.debug.as_mut() {
+            //     if debug.revert_strings.is_some() {
+            //         warn!("omitting revertStrings supplied for the yul sources");
+            //         debug.revert_strings = None;
+            //     }
+            // }
         }
         self.settings = settings;
         self
@@ -148,24 +174,25 @@ impl CompilerInput {
     /// Sets the EVM version for compilation
     #[must_use]
     pub fn evm_version(mut self, version: EvmVersion) -> Self {
-        self.settings.evm_version = Some(version);
+        self.settings.evm_version =
+            Some(version.to_string().as_str().try_into().expect("EVM version compatibility"));
         self
     }
 
     /// Sets the optimizer runs (default = 200)
     #[must_use]
     pub fn optimizer(mut self, runs: usize) -> Self {
-        self.settings.optimizer.runs(runs);
-        self
+        todo!("optimizer runs not available with zksolc")
     }
 
     /// Normalizes the EVM version used in the settings to be up to the latest one
     /// supported by the provided compiler version.
     #[must_use]
     pub fn normalize_evm_version(mut self, version: &Version) -> Self {
-        if let Some(evm_version) = &mut self.settings.evm_version {
-            self.settings.evm_version = evm_version.normalize_version(version);
-        }
+        //TODO: normalize evm version?
+        // if let Some(evm_version) = &mut self.settings.evm_version {
+        //     self.settings.evm_version = evm_version.normalize_version(version);
+        // }
         self
     }
 
@@ -174,7 +201,9 @@ impl CompilerInput {
         if self.is_yul() {
             warn!("omitting remappings supplied for the yul sources");
         } else {
-            self.settings.remappings = remappings;
+            self.settings
+                .remappings
+                .replace(remappings.into_iter().map(|map| map.to_string()).collect());
         }
         self
     }
@@ -204,373 +233,87 @@ impl CompilerInput {
     /// See also `solc --base-path`
     pub fn with_base_path(mut self, base: impl AsRef<Path>) -> Self {
         let base = base.as_ref();
-        self.settings = self.settings.with_base_path(base);
+
+        let settings_with_base_path = |settings: &mut ZkSolcSettings, base: &Path| {
+            if let Some(remappings) = &mut settings.remappings {
+                let new = remappings
+                    .iter()
+                    .map(|r| {
+                        let mut name_and_path = r.split('=');
+                        let Some(context_and_name) = name_and_path.next() else { return r.clone() };
+
+                        let Some(mut path) = name_and_path.next().map(|s| s.to_owned()) else {
+                            return r.clone();
+                        };
+
+                        if let Ok(stripped) = Path::new(&path).strip_prefix(base) {
+                            path = format!("{}", stripped.display());
+                        }
+
+                        format!("{context_and_name}={path}")
+                    })
+                    .collect();
+
+                *remappings = new;
+            }
+
+            //settings.libraries
+            if let Some(libs) = settings.libraries.take() {
+                let base = format!("{}", base.display());
+
+                settings.libraries.replace(
+                    libs.into_iter()
+                        .map(|(file, libs)| {
+                            (file.strip_prefix(&base).map(Into::into).unwrap_or(file), libs)
+                        })
+                        .collect(),
+                );
+            }
+
+            //settings.selection is always `*` so no need to change base path there
+        };
+
+        settings_with_base_path(&mut self.settings, base);
         self.strip_prefix(base)
     }
 
     /// The flag indicating whether the current [CompilerInput] is
     /// constructed for the yul sources
     pub fn is_yul(&self) -> bool {
-        self.language == YUL
+        self.language == ZkSolcLanguage::Yul
     }
 }
 
-/// A `CompilerInput` representation used for verify
-///
-/// This type is an alternative `CompilerInput` but uses non-alphabetic ordering of the `sources`
-/// and instead emits the (Path -> Source) path in the same order as the pairs in the `sources`
-/// `Vec`. This is used over a map, so we can determine the order in which etherscan will display
-/// the verified contracts
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StandardJsonCompilerInput {
-    pub language: String,
-    #[serde(with = "serde_helpers::tuple_vec_map")]
-    pub sources: Vec<(PathBuf, Source)>,
-    pub settings: Settings,
-}
-
-// === impl StandardJsonCompilerInput ===
-
-impl StandardJsonCompilerInput {
-    pub fn new(sources: Vec<(PathBuf, Source)>, settings: Settings) -> Self {
-        Self { language: SOLIDITY.to_string(), sources, settings }
-    }
-
-    /// Normalizes the EVM version used in the settings to be up to the latest one
-    /// supported by the provided compiler version.
-    #[must_use]
-    pub fn normalize_evm_version(mut self, version: &Version) -> Self {
-        if let Some(evm_version) = &mut self.settings.evm_version {
-            self.settings.evm_version = evm_version.normalize_version(version);
-        }
-        self
-    }
-}
+pub type StandardJsonCompilerInput = era_compiler_solidity::SolcStandardJsonInput;
 
 impl From<StandardJsonCompilerInput> for CompilerInput {
     fn from(input: StandardJsonCompilerInput) -> Self {
-        let StandardJsonCompilerInput { language, sources, settings } = input;
-        CompilerInput { language, sources: sources.into_iter().collect(), settings }
+        let StandardJsonCompilerInput { language, sources, settings, suppressed_warnings: _ } =
+            input;
+        CompilerInput {
+            language,
+            sources: sources.into_iter().map(|(k, v)| (PathBuf::from(k), v.into())).collect(),
+            settings,
+        }
     }
 }
 
 impl From<CompilerInput> for StandardJsonCompilerInput {
     fn from(input: CompilerInput) -> Self {
         let CompilerInput { language, sources, settings } = input;
-        StandardJsonCompilerInput { language, sources: sources.into_iter().collect(), settings }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Settings {
-    /// Stop compilation after the given stage.
-    /// since 0.8.11: only "parsing" is valid here
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stop_after: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub remappings: Vec<Remapping>,
-    pub optimizer: Optimizer,
-    /// Model Checker options.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model_checker: Option<ModelCheckerSettings>,
-    /// Metadata settings
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<SettingsMetadata>,
-    /// This field can be used to select desired outputs based
-    /// on file and contract names.
-    /// If this field is omitted, then the compiler loads and does type
-    /// checking, but will not generate any outputs apart from errors.
-    #[serde(default)]
-    pub output_selection: OutputSelection,
-    #[serde(
-        default,
-        with = "serde_helpers::display_from_str_opt",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub evm_version: Option<EvmVersion>,
-    /// Change compilation pipeline to go through the Yul intermediate representation. This is
-    /// false by default.
-    #[serde(rename = "viaIR", default, skip_serializing_if = "Option::is_none")]
-    pub via_ir: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub debug: Option<DebuggingSettings>,
-    /// Addresses of the libraries. If not all libraries are given here,
-    /// it can result in unlinked objects whose output data is different.
-    ///
-    /// The top level key is the name of the source file where the library is used.
-    /// If remappings are used, this source file should match the global path
-    /// after remappings were applied.
-    /// If this key is an empty string, that refers to a global level.
-    #[serde(default)]
-    pub libraries: Libraries,
-}
-
-impl Settings {
-    /// Creates a new `Settings` instance with the given `output_selection`
-    pub fn new(output_selection: impl Into<OutputSelection>) -> Self {
-        Self { output_selection: output_selection.into(), ..Default::default() }
-    }
-
-    /// Consumes the type and returns a [Settings::sanitize] version
-    pub fn sanitized(mut self, version: &Version) -> Self {
-        self.sanitize(version);
-        self
-    }
-
-    /// This will remove/adjust values in the settings that are not compatible with this version.
-    pub fn sanitize(&mut self, version: &Version) {
-        const V0_6_0: Version = Version::new(0, 6, 0);
-        if *version < V0_6_0 {
-            if let Some(meta) = &mut self.metadata {
-                // introduced in <https://docs.soliditylang.org/en/v0.6.0/using-the-compiler.html#compiler-api>
-                // missing in <https://docs.soliditylang.org/en/v0.5.17/using-the-compiler.html#compiler-api>
-                meta.bytecode_hash = None;
-            }
-            // introduced in <https://docs.soliditylang.org/en/v0.6.0/using-the-compiler.html#compiler-api>
-            self.debug = None;
-        }
-
-        const V0_7_5: Version = Version::new(0, 7, 5);
-        if *version < V0_7_5 {
-            // introduced in 0.7.5 <https://github.com/ethereum/solidity/releases/tag/v0.7.5>
-            self.via_ir = None;
-        }
-
-        const V0_8_7: Version = Version::new(0, 8, 7);
-        if *version < V0_8_7 {
-            // lower the disable version from 0.8.10 to 0.8.7, due to `divModNoSlacks`,
-            // `showUnproved` and `solvers` are implemented
-            // introduced in <https://github.com/ethereum/solidity/releases/tag/v0.8.7>
-            self.model_checker = None;
-        }
-
-        const V0_8_10: Version = Version::new(0, 8, 10);
-        if *version < V0_8_10 {
-            if let Some(debug) = &mut self.debug {
-                // introduced in <https://docs.soliditylang.org/en/v0.8.10/using-the-compiler.html#compiler-api>
-                // <https://github.com/ethereum/solidity/releases/tag/v0.8.10>
-                debug.debug_info.clear();
-            }
-
-            if let Some(model_checker) = &mut self.model_checker {
-                // introduced in <https://github.com/ethereum/solidity/releases/tag/v0.8.10>
-                model_checker.invariants = None;
-            }
-        }
-
-        const V0_8_18: Version = Version::new(0, 8, 18);
-        if *version < V0_8_18 {
-            // introduced in 0.8.18 <https://github.com/ethereum/solidity/releases/tag/v0.8.18>
-            if let Some(meta) = &mut self.metadata {
-                meta.cbor_metadata = None;
-            }
-
-            if let Some(model_checker) = &mut self.model_checker {
-                if let Some(solvers) = &mut model_checker.solvers {
-                    // elf solver introduced in 0.8.18 <https://github.com/ethereum/solidity/releases/tag/v0.8.18>
-                    solvers.retain(|solver| *solver != ModelCheckerSolver::Eld);
-                }
-            }
-        }
-
-        if *version < SHANGHAI_SOLC {
-            // introduced in 0.8.20 <https://github.com/ethereum/solidity/releases/tag/v0.8.20>
-            if let Some(model_checker) = &mut self.model_checker {
-                model_checker.show_proved_safe = None;
-                model_checker.show_unsupported = None;
-            }
-        }
-    }
-
-    /// Inserts a set of `ContractOutputSelection`
-    pub fn push_all(&mut self, settings: impl IntoIterator<Item = ContractOutputSelection>) {
-        for value in settings {
-            self.push_output_selection(value)
-        }
-    }
-
-    /// Inserts a set of `ContractOutputSelection`
-    #[must_use]
-    pub fn with_extra_output(
-        mut self,
-        settings: impl IntoIterator<Item = ContractOutputSelection>,
-    ) -> Self {
-        for value in settings {
-            self.push_output_selection(value)
-        }
-        self
-    }
-
-    /// Inserts the value for all files and contracts
-    ///
-    /// ```
-    /// use foundry_compilers::artifacts::{output_selection::ContractOutputSelection, Settings};
-    /// let mut selection = Settings::default();
-    /// selection.push_output_selection(ContractOutputSelection::Metadata);
-    /// ```
-    pub fn push_output_selection(&mut self, value: impl ToString) {
-        self.push_contract_output_selection("*", value)
-    }
-
-    /// Inserts the `key` `value` pair to the `output_selection` for all files
-    ///
-    /// If the `key` already exists, then the value is added to the existing list
-    pub fn push_contract_output_selection(
-        &mut self,
-        contracts: impl Into<String>,
-        value: impl ToString,
-    ) {
-        let value = value.to_string();
-        let values = self
-            .output_selection
-            .as_mut()
-            .entry("*".to_string())
-            .or_default()
-            .entry(contracts.into())
-            .or_default();
-        if !values.contains(&value) {
-            values.push(value)
-        }
-    }
-
-    /// Sets the value for all files and contracts
-    pub fn set_output_selection(&mut self, values: impl IntoIterator<Item = impl ToString>) {
-        self.set_contract_output_selection("*", values)
-    }
-
-    /// Sets the `key` to the `values` pair to the `output_selection` for all files
-    ///
-    /// This will replace the existing values for `key` if they're present
-    pub fn set_contract_output_selection(
-        &mut self,
-        key: impl Into<String>,
-        values: impl IntoIterator<Item = impl ToString>,
-    ) {
-        self.output_selection
-            .as_mut()
-            .entry("*".to_string())
-            .or_default()
-            .insert(key.into(), values.into_iter().map(|s| s.to_string()).collect());
-    }
-
-    /// Sets the `viaIR` value.
-    #[must_use]
-    pub fn set_via_ir(mut self, via_ir: bool) -> Self {
-        self.via_ir = Some(via_ir);
-        self
-    }
-
-    /// Enables `viaIR`.
-    #[must_use]
-    pub fn with_via_ir(self) -> Self {
-        self.set_via_ir(true)
-    }
-
-    /// Enable `viaIR` and use the minimum optimization settings.
-    ///
-    /// This is useful in the following scenarios:
-    /// - When compiling for test coverage, this can resolve the "stack too deep" error while still
-    ///   giving a relatively accurate source mapping
-    /// - When compiling for test, this can reduce the compilation time
-    pub fn with_via_ir_minimum_optimization(mut self) -> Self {
-        // https://github.com/foundry-rs/foundry/pull/5349
-        // https://github.com/ethereum/solidity/issues/12533#issuecomment-1013073350
-        self.via_ir = Some(true);
-        self.optimizer.details = Some(OptimizerDetails {
-            peephole: Some(false),
-            inliner: Some(false),
-            jumpdest_remover: Some(false),
-            order_literals: Some(false),
-            deduplicate: Some(false),
-            cse: Some(false),
-            constant_optimizer: Some(false),
-            yul: Some(true), // enable yul optimizer
-            yul_details: Some(YulDetails {
-                stack_allocation: Some(true),
-                // with only unused prunner step
-                optimizer_steps: Some("u".to_string()),
-            }),
-        });
-        self
-    }
-
-    /// Adds `ast` to output
-    #[must_use]
-    pub fn with_ast(mut self) -> Self {
-        let output = self.output_selection.as_mut().entry("*".to_string()).or_default();
-        output.insert(String::new(), vec!["ast".to_string()]);
-        self
-    }
-
-    /// Strips `base` from all paths
-    pub fn with_base_path(mut self, base: impl AsRef<Path>) -> Self {
-        let base = base.as_ref();
-        self.remappings.iter_mut().for_each(|r| {
-            r.strip_prefix(base);
-        });
-
-        self.libraries.libs = self
-            .libraries
-            .libs
-            .into_iter()
-            .map(|(file, libs)| (file.strip_prefix(base).map(Into::into).unwrap_or(file), libs))
-            .collect();
-
-        self.output_selection = OutputSelection(
-            self.output_selection
-                .0
+        StandardJsonCompilerInput {
+            language,
+            sources: sources
                 .into_iter()
-                .map(|(file, selection)| {
-                    (
-                        Path::new(&file)
-                            .strip_prefix(base)
-                            .map(|p| format!("{}", p.display()))
-                            .unwrap_or(file),
-                        selection,
-                    )
-                })
+                .map(|(k, v)| (format!("{}", k.display()), v.into()))
                 .collect(),
-        );
-
-        if let Some(mut model_checker) = self.model_checker.take() {
-            model_checker.contracts = model_checker
-                .contracts
-                .into_iter()
-                .map(|(path, contracts)| {
-                    (
-                        Path::new(&path)
-                            .strip_prefix(base)
-                            .map(|p| format!("{}", p.display()))
-                            .unwrap_or(path),
-                        contracts,
-                    )
-                })
-                .collect();
-            self.model_checker = Some(model_checker);
+            settings,
+            suppressed_warnings: None,
         }
-
-        self
     }
 }
 
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            stop_after: None,
-            optimizer: Default::default(),
-            metadata: None,
-            output_selection: OutputSelection::default_output_selection(),
-            evm_version: Some(EvmVersion::default()),
-            via_ir: None,
-            debug: None,
-            libraries: Default::default(),
-            remappings: Default::default(),
-            model_checker: None,
-        }
-        .with_ast()
-    }
-}
+pub type Settings = ZkSolcSettings;
 
 /// A wrapper type for all libraries in the form of `<file>:<lib>:<addr>`
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -1537,7 +1280,7 @@ impl Source {
         files
             .into_iter()
             .map(Into::into)
-            .map(|file| Self::read(&file).map(|source| (file, source)))
+            .map(|file| Self::read(&file).map(|source| (file, source.into())))
             .collect()
     }
 
@@ -1556,7 +1299,7 @@ impl Source {
             .into_iter()
             .par_bridge()
             .map(Into::into)
-            .map(|file| Self::read(&file).map(|source| (file, source)))
+            .map(|file| Self::read(&file).map(|source| (file, source.into())))
             .collect()
     }
 
@@ -1616,6 +1359,18 @@ impl AsRef<str> for Source {
 impl AsRef<[u8]> for Source {
     fn as_ref(&self) -> &[u8] {
         self.content.as_bytes()
+    }
+}
+
+impl From<Source> for ZkSource {
+    fn from(value: Source) -> Self {
+        Self { content: value.content.as_ref().clone() }
+    }
+}
+
+impl From<ZkSource> for Source {
+    fn from(value: ZkSource) -> Self {
+        Self { content: Arc::new(value.content) }
     }
 }
 

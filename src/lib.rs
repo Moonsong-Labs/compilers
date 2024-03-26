@@ -547,15 +547,21 @@ impl<T: ArtifactOutput> Project<T> {
 
         let mut settings = self.solc_config.settings.clone();
         // strip the path to the project root from all remappings
-        settings.remappings = self
-            .paths
-            .remappings
-            .clone()
-            .into_iter()
-            .map(|r| r.into_relative(self.root()).to_relative_remapping())
-            .collect::<Vec<_>>();
+        settings.remappings.replace(
+            self.paths
+                .remappings
+                .clone()
+                .into_iter()
+                .map(|r| r.into_relative(self.root()).to_relative_remapping().to_string())
+                .collect::<_>(),
+        );
 
-        let input = StandardJsonCompilerInput::new(sources, settings);
+        let input = CompilerInput::with_sources(sources)
+            .into_iter()
+            .find(|input| !input.is_yul())
+            .expect("compiler input with solidity sources")
+            .settings(settings)
+            .into();
 
         Ok(input)
     }

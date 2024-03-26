@@ -1,11 +1,14 @@
 use crate::{
-    artifacts::{output_selection::ContractOutputSelection, Settings},
+    artifacts::{
+        output_selection::{ContractOutputSelection, SelectionSubset},
+        Settings,
+    },
     cache::SOLIDITY_FILES_CACHE_FILENAME,
     error::{Result, SolcError, SolcIoError},
     flatten::{collect_ordered_deps, combine_version_pragmas},
     remappings::Remapping,
     resolver::{Graph, SolImportAlias},
-    utils, Source, Sources,
+    utils, CompilerInput, Source, Sources,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -780,28 +783,22 @@ impl SolcConfig {
     pub fn can_use_cached(&self, cached: &SolcConfig) -> bool {
         let SolcConfig { settings } = self;
         let Settings {
-            stop_after,
             remappings,
             optimizer,
-            model_checker,
             metadata,
             output_selection,
             evm_version,
             via_ir,
-            debug,
             libraries,
         } = settings;
 
-        *stop_after == cached.settings.stop_after
-            && *remappings == cached.settings.remappings
+        *remappings == cached.settings.remappings
             && *optimizer == cached.settings.optimizer
-            && *model_checker == cached.settings.model_checker
             && *metadata == cached.settings.metadata
             && *evm_version == cached.settings.evm_version
             && *via_ir == cached.settings.via_ir
-            && *debug == cached.settings.debug
             && *libraries == cached.settings.libraries
-            && output_selection.is_subset_of(&cached.settings.output_selection)
+            && output_selection.as_ref().is_subset_of(&cached.settings.output_selection.as_ref())
     }
 }
 
@@ -850,8 +847,43 @@ impl SolcConfigBuilder {
     /// If no solc version is configured then it will be determined by calling `solc --version`.
     pub fn build(self) -> SolcConfig {
         let Self { settings, output_selection } = self;
-        let mut settings = settings.unwrap_or_default();
-        settings.push_all(output_selection);
+        let mut settings = settings.unwrap_or_else(CompilerInput::default_settings);
+
+        //push output selections into configuration
+        let pipeline = era_compiler_solidity::SolcPipeline::Yul;
+
+        let mut valid_flags = output_selection
+            .into_iter()
+            .filter_map(|selection| selection.to_string().parse().ok())
+            .peekable();
+
+        if valid_flags.peek().is_some() {
+            let output_selection = settings.output_selection.get_or_insert_with(|| {
+                era_compiler_solidity::SolcStandardJsonInputSettingsSelection::new_required(
+                    pipeline,
+                )
+            });
+
+            output_selection.all.get_or_insert_with(|| {
+                era_compiler_solidity::SolcStandardJsonInputSettingsSelectionFile::new_required(
+                    pipeline,
+                )
+            });
+        }
+
+        for selection in valid_flags {
+            settings
+                .output_selection
+                .as_mut()
+                .unwrap()
+                .all
+                .as_mut()
+                .unwrap()
+                .per_contract
+                .get_or_insert_with(|| Default::default())
+                .insert(selection);
+        }
+
         SolcConfig { settings }
     }
 }

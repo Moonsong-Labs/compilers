@@ -106,33 +106,67 @@ impl SparseOutputFilter {
         f: &dyn FileFilter,
     ) {
         trace!("optimizing output selection with custom filter");
-        let selection = settings
+
+        let pipeline = era_compiler_solidity::SolcPipeline::Yul;
+        let file_selection = settings
             .output_selection
+            .get_or_insert_with(|| {
+                era_compiler_solidity::SolcStandardJsonInputSettingsSelection::new_required(
+                    pipeline,
+                )
+            })
+            .all
             .as_mut()
-            .remove("*")
-            .unwrap_or_else(OutputSelection::default_file_output_selection);
+            .map(|file| {
+                file.per_file.get_or_insert_with(|| {
+                    era_compiler_solidity::SolcStandardJsonInputSettingsSelectionFile::new_required(
+                        pipeline,
+                    )
+                    .per_file
+                    .unwrap()
+                })
+            })
+            .cloned()
+            .unwrap();
 
         for (file, source) in sources.0.iter() {
-            let key = format!("{}", file.display());
+            let _key = format!("{}", file.display());
             if source.is_dirty() && f.is_match(file) {
-                settings.output_selection.as_mut().insert(key, selection.clone());
+                settings
+                    .output_selection
+                    .as_mut()
+                    .unwrap()
+                    .all
+                    .as_mut()
+                    .unwrap()
+                    .per_file
+                    //TODO: add file path as key?
+                    .replace(file_selection.clone());
 
                 // the filter might not cover link references that will be required by the file, so
                 // we check if the file has any libraries that won't be inlined and include them as
                 // well
-                for link in graph.get_link_references(file) {
+                for _link in graph.get_link_references(file) {
                     settings
                         .output_selection
                         .as_mut()
-                        .insert(format!("{}", link.display()), selection.clone());
+                        .unwrap()
+                        .all
+                        .as_mut()
+                        .unwrap()
+                        .per_file
+                        //TODO: add file path as key?
+                        .replace(file_selection.clone());
                 }
-            } else if !settings.output_selection.as_ref().contains_key(&key) {
-                trace!("using pruned output selection for {}", file.display());
-                settings
-                    .output_selection
-                    .as_mut()
-                    .insert(key, OutputSelection::empty_file_output_select());
             }
+            // TODO: prune output selection for cached files?
+            // else if !settings.output_selection.as_ref().contains_key(&key) {
+            //     trace!("using pruned output selection for {}", file.display());
+            //     settings
+            //         .output_selection
+            //         .as_mut()
+            //         .insert(key, OutputSelection::empty_file_output_select());
+            // }
         }
     }
 
@@ -145,25 +179,50 @@ impl SparseOutputFilter {
             sources.len()
         );
 
-        let selection = settings
+        let pipeline = era_compiler_solidity::SolcPipeline::Yul;
+        let file_selection = settings
             .output_selection
+            .get_or_insert_with(|| {
+                era_compiler_solidity::SolcStandardJsonInputSettingsSelection::new_required(
+                    pipeline,
+                )
+            })
+            .all
             .as_mut()
-            .remove("*")
-            .unwrap_or_else(OutputSelection::default_file_output_selection);
+            .map(|file| {
+                file.per_file.get_or_insert_with(|| {
+                    era_compiler_solidity::SolcStandardJsonInputSettingsSelectionFile::new_required(
+                        pipeline,
+                    )
+                    .per_file
+                    .unwrap()
+                })
+            })
+            .cloned()
+            .unwrap();
 
         for (file, source) in sources.0.iter() {
             if source.is_dirty() {
                 settings
                     .output_selection
                     .as_mut()
-                    .insert(format!("{}", file.display()), selection.clone());
-            } else {
-                trace!("using pruned output selection for {}", file.display());
-                settings.output_selection.as_mut().insert(
-                    format!("{}", file.display()),
-                    OutputSelection::empty_file_output_select(),
-                );
+                    .unwrap()
+                    .all
+                    .as_mut()
+                    .unwrap()
+                    .per_file
+                    //TODO: add file path as key?
+                    .replace(file_selection.clone());
             }
+
+            // TODO: prune output selection for cached files?
+            // else {
+            //     trace!("using pruned output selection for {}", file.display());
+            //     settings.output_selection.as_mut().insert(
+            //         format!("{}", file.display()),
+            //         OutputSelection::empty_file_output_select(),
+            //     );
+            // }
         }
     }
 }
