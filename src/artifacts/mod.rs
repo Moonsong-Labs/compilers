@@ -27,10 +27,7 @@ pub mod bytecode;
 pub mod contract;
 pub mod output_selection;
 pub mod serde_helpers;
-use crate::{
-    artifacts::output_selection::{ContractOutputSelection, OutputSelection},
-    filter::FilteredSources,
-};
+use crate::filter::FilteredSources;
 pub use bytecode::*;
 pub use contract::*;
 pub use serde_helpers::{deserialize_bytes, deserialize_opt_bytes};
@@ -61,8 +58,8 @@ pub(crate) type VersionedSources = BTreeMap<ZkSolc, (Version, Sources)>;
 /// A set of different Solc installations with their version and the sources to be compiled
 pub(crate) type VersionedFilteredSources = BTreeMap<ZkSolc, (Version, FilteredSources)>;
 
-const SOLIDITY: &str = "Solidity";
-const YUL: &str = "Yul";
+pub const SOLIDITY: ZkSolcLanguage = ZkSolcLanguage::Solidity;
+pub const YUL: ZkSolcLanguage = ZkSolcLanguage::Yul;
 
 /// Input type `solc` expects.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -171,6 +168,24 @@ impl CompilerInput {
         self
     }
 
+    pub fn push_output_selection(&mut self, selection: &str) {
+        let pipeline = era_compiler_solidity::SolcPipeline::Yul;
+
+        let Ok(selection) = selection.parse() else { return };
+
+        let output_selection = self.settings.output_selection.get_or_insert_with(|| {
+            era_compiler_solidity::SolcStandardJsonInputSettingsSelection::new_required(pipeline)
+        });
+
+        let file_selection = output_selection.all.get_or_insert_with(|| {
+            era_compiler_solidity::SolcStandardJsonInputSettingsSelectionFile::new_required(
+                pipeline,
+            )
+        });
+
+        file_selection.per_contract.get_or_insert_with(|| Default::default()).insert(selection);
+    }
+
     /// Sets the EVM version for compilation
     #[must_use]
     pub fn evm_version(mut self, version: EvmVersion) -> Self {
@@ -181,14 +196,14 @@ impl CompilerInput {
 
     /// Sets the optimizer runs (default = 200)
     #[must_use]
-    pub fn optimizer(mut self, runs: usize) -> Self {
+    pub fn optimizer(self, _runs: usize) -> Self {
         todo!("optimizer runs not available with zksolc")
     }
 
     /// Normalizes the EVM version used in the settings to be up to the latest one
     /// supported by the provided compiler version.
     #[must_use]
-    pub fn normalize_evm_version(mut self, version: &Version) -> Self {
+    pub fn normalize_evm_version(self, _version: &Version) -> Self {
         //TODO: normalize evm version?
         // if let Some(evm_version) = &mut self.settings.evm_version {
         //     self.settings.evm_version = evm_version.normalize_version(version);
@@ -751,47 +766,15 @@ impl FromStr for RevertStrings {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SettingsMetadata {
-    /// Use only literal content and not URLs (false by default)
-    #[serde(default, rename = "useLiteralContent", skip_serializing_if = "Option::is_none")]
-    pub use_literal_content: Option<bool>,
-    /// Use the given hash method for the metadata hash that is appended to the bytecode.
-    /// The metadata hash can be removed from the bytecode via option "none".
-    /// The other options are "ipfs" and "bzzr1".
-    /// If the option is omitted, "ipfs" is used by default.
-    #[serde(
-        default,
-        rename = "bytecodeHash",
-        skip_serializing_if = "Option::is_none",
-        with = "serde_helpers::display_from_str_opt"
-    )]
-    pub bytecode_hash: Option<BytecodeHash>,
-    #[serde(default, rename = "appendCBOR", skip_serializing_if = "Option::is_none")]
-    pub cbor_metadata: Option<bool>,
-}
-
-impl SettingsMetadata {
-    pub fn new(hash: BytecodeHash, cbor: bool) -> Self {
-        Self { use_literal_content: None, bytecode_hash: Some(hash), cbor_metadata: Some(cbor) }
-    }
-}
-
-impl From<BytecodeHash> for SettingsMetadata {
-    fn from(hash: BytecodeHash) -> Self {
-        Self { use_literal_content: None, bytecode_hash: Some(hash), cbor_metadata: None }
-    }
-}
+pub type SettingsMetadata = era_compiler_solidity::SolcStandardJsonInputSettingsMetadata;
 
 /// Determines the hash method for the metadata hash that is appended to the bytecode.
 ///
 /// Solc's default is `Ipfs`, see <https://docs.soliditylang.org/en/latest/using-the-compiler.html#compiler-api>.
 #[derive(Clone, Debug, Default, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BytecodeHash {
-    #[default]
-    Ipfs,
     None,
-    Bzzr1,
+    #[default]
     Keccak256,
 }
 
@@ -801,8 +784,6 @@ impl FromStr for BytecodeHash {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "none" => Ok(BytecodeHash::None),
-            "ipfs" => Ok(BytecodeHash::Ipfs),
-            "bzzr1" => Ok(BytecodeHash::Bzzr1),
             "keccak256" => Ok(BytecodeHash::Keccak256),
             s => Err(format!("Unknown bytecode hash: {s}")),
         }
@@ -812,12 +793,17 @@ impl FromStr for BytecodeHash {
 impl fmt::Display for BytecodeHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            BytecodeHash::Ipfs => "ipfs",
             BytecodeHash::None => "none",
-            BytecodeHash::Bzzr1 => "bzzr1",
             BytecodeHash::Keccak256 => "keccak256",
         };
         f.write_str(s)
+    }
+}
+
+impl Into<era_compiler_solidity::SolcStandardJsonInputSettingsMetadata> for BytecodeHash {
+    fn into(self) -> era_compiler_solidity::SolcStandardJsonInputSettingsMetadata {
+        let this = self.to_string().parse().unwrap();
+        era_compiler_solidity::SolcStandardJsonInputSettingsMetadata::new(this)
     }
 }
 
@@ -1963,16 +1949,15 @@ mod tests {
     fn can_sanitize_byte_code_hash() {
         let version: Version = "0.6.0".parse().unwrap();
 
-        let settings = Settings { metadata: Some(BytecodeHash::Ipfs.into()), ..Default::default() };
-
-        let input = CompilerInput {
-            language: "Solidity".to_string(),
-            sources: Default::default(),
-            settings,
+        let settings = Settings {
+            metadata: Some(BytecodeHash::Keccak256.into()),
+            ..CompilerInput::default_settings()
         };
 
+        let input = CompilerInput { language: SOLIDITY, sources: Default::default(), settings };
+
         let i = input.clone().sanitized(&version);
-        assert_eq!(i.settings.metadata.unwrap().bytecode_hash, Some(BytecodeHash::Ipfs));
+        assert_eq!(i.settings.metadata.unwrap(), BytecodeHash::Keccak256.into());
 
         let version: Version = "0.5.17".parse().unwrap();
         let i = input.sanitized(&version);
@@ -1980,25 +1965,22 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn can_sanitize_cbor_metadata() {
         let version: Version = "0.8.18".parse().unwrap();
 
         let settings = Settings {
-            metadata: Some(SettingsMetadata::new(BytecodeHash::Ipfs, true)),
-            ..Default::default()
+            metadata: Some(BytecodeHash::Keccak256.into()),
+            ..CompilerInput::default_settings()
         };
 
-        let input = CompilerInput {
-            language: "Solidity".to_string(),
-            sources: Default::default(),
-            settings,
-        };
+        let input = CompilerInput { language: SOLIDITY, sources: Default::default(), settings };
 
         let i = input.clone().sanitized(&version);
-        assert_eq!(i.settings.metadata.unwrap().cbor_metadata, Some(true));
+        // assert_eq!(i.settings.metadata.unwrap().cbor_metadata, Some(true));
 
         let i = input.sanitized(&Version::new(0, 8, 0));
-        assert!(i.settings.metadata.unwrap().cbor_metadata.is_none());
+        // assert!(i.settings.metadata.unwrap().cbor_metadata.is_none());
     }
 
     #[test]

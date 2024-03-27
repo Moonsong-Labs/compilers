@@ -1,7 +1,7 @@
 //! Types to apply filter to input types
 
 use crate::{
-    artifacts::{output_selection::OutputSelection, Settings},
+    artifacts::{Settings},
     resolver::GraphEdges,
     Source, Sources,
 };
@@ -201,7 +201,7 @@ impl SparseOutputFilter {
             .cloned()
             .unwrap();
 
-        for (file, source) in sources.0.iter() {
+        for (_file, source) in sources.0.iter() {
             if source.is_dirty() {
                 settings
                     .output_selection

@@ -173,6 +173,12 @@ pub trait SelectionSubset {
     fn is_subset_of(&self, other: &Self) -> bool;
 }
 
+impl SelectionSubset for OutputSelection {
+    fn is_subset_of(&self, other: &Self) -> bool {
+        (&self).is_subset_of(&other)
+    }
+}
+
 impl<'a> SelectionSubset for &'a OutputSelection {
     fn is_subset_of(&self, other: &Self) -> bool {
         self.0.iter().all(|(file, selection)| {
