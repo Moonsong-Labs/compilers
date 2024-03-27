@@ -1360,6 +1360,60 @@ impl From<ZkSource> for Source {
     }
 }
 
+impl From<era_compiler_solidity::SolcStandardJsonOutput> for CompilerOutput {
+    fn from(
+        era_compiler_solidity::SolcStandardJsonOutput {
+            contracts,
+            sources,
+            errors,
+            version,
+            long_version,
+            zk_version,
+        }: era_compiler_solidity::SolcStandardJsonOutput,
+    ) -> Self {
+        let errors = errors
+            .into_iter()
+            .flatten()
+            .map(|e| Error {
+                component: e.component,
+                error_code: e.error_code.and_then(|e| e.parse().ok()),
+                formatted_message: Some(e.formatted_message),
+                message: e.message,
+                severity: e.severity.parse().unwrap_or_default(),
+                source_location: e.source_location.map(|sl| error::SourceLocation {
+                    start: sl.start as i32,
+                    end: sl.end as i32,
+                    file: sl.file
+                }),
+                r#type: e.r#type,
+                secondary_source_locations: vec![],
+            })
+            .collect();
+
+        let sources = sources
+            .into_iter()
+            .flatten()
+            .map(|(path, file)| {
+                let file = SourceFile {
+                    id: file.id as u64,
+                    ast: None, //TODO: convert raw file.ast to foundry's
+                };
+
+                (path, file)
+            })
+            .collect();
+
+        Self {
+            errors,
+            sources,
+            contracts: contracts.unwrap_or_default(),
+            version,
+            long_version,
+            zk_version,
+        }
+    }
+}
+
 /// Output type `solc` produces
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
 pub struct CompilerOutput {

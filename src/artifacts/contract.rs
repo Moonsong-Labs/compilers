@@ -11,50 +11,9 @@ use alloy_primitives::Bytes;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, collections::BTreeMap};
 
-use super::ZkOrSolcMetadata;
+use era_compiler_solidity::SolcStandardJsonOutputContract as ZkContract;
 
-/// Represents a compiled solidity contract
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct Contract {
-    /// The Ethereum Contract Metadata.
-    /// See <https://docs.soliditylang.org/en/develop/metadata.html>
-    pub abi: Option<JsonAbi>,
-
-    pub metadata: Option<ZkOrSolcMetadata>,
-
-    //TODO: remove?
-    #[serde(default)]
-    pub userdoc: UserDoc,
-    //TODO: remove?
-    #[serde(default)]
-    pub devdoc: DevDoc,
-
-    //TODO: remove?
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ir: Option<String>,
-    //TODO: remove?
-    #[serde(default, skip_serializing_if = "StorageLayout::is_empty")]
-    pub storage_layout: StorageLayout,
-
-    /// EVM-related outputs
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub evm: Option<Evm>,
-
-    //TODO: remove?
-    /// Ewasm related outputs
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ewasm: Option<Ewasm>,
-
-    //TODO: remove?
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ir_optimized: Option<String>,
-
-    pub hash: Option<String>,
-
-    #[serde(rename = "factoryDependencies", default)]
-    pub factory_dependencies: BTreeMap<String, String>,
-}
+pub type Contract = era_compiler_solidity::SolcStandardJsonOutputContract;
 
 impl<'a> From<&'a Contract> for CompactContractBytecodeCow<'a> {
     fn from(artifact: &'a Contract) -> Self {
@@ -530,17 +489,17 @@ impl<'a> CompactContractRef<'a> {
 
 impl<'a> From<&'a Contract> for CompactContractRef<'a> {
     fn from(c: &'a Contract) -> Self {
-        let (bin, bin_runtime) = if let Some(ref evm) = c.evm {
-            (
-                evm.bytecode.as_ref().map(|c| &c.object),
-                evm.deployed_bytecode
-                    .as_ref()
-                    .and_then(|deployed| deployed.bytecode.as_ref().map(|evm| &evm.object)),
-            )
-        } else {
-            (None, None)
-        };
+        // let (bin, bin_runtime) = if let Some(ref evm) = c.evm {
+        //     (
+        //         evm.bytecode.as_ref().map(|c| &c.object),
+        //         evm.deployed_bytecode
+        //             .as_ref()
+        //             .and_then(|deployed| deployed.bytecode.as_ref().map(|evm| &evm.object)),
+        //     )
+        // } else {
+        //     (None, None)
+        // };
 
-        Self { abi: c.abi.as_ref(), bin, bin_runtime }
+        Self { abi: None, bin: None, bin_runtime: None }
     }
 }
