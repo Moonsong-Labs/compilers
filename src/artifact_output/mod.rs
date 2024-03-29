@@ -4,7 +4,7 @@ use crate::{
     artifacts::{
         contract::{CompactContract, CompactContractBytecode, Contract},
         BytecodeObject, CompactBytecode, CompactContractBytecodeCow, CompactDeployedBytecode,
-        FileToContractsMap, SourceFile,
+        FileToContractsMap, JsonAbi, SourceFile,
     },
     compile::output::{contracts::VersionedContracts, sources::VersionedSourceFiles},
     error::Result,
@@ -12,7 +12,6 @@ use crate::{
     sources::VersionedSourceFile,
     utils, HardhatArtifact, ProjectPathsConfig, SolFilesCache, SolcError, SolcIoError,
 };
-use alloy_json_abi::JsonAbi;
 use alloy_primitives::Bytes;
 use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};

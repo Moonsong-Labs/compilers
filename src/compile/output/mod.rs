@@ -906,7 +906,12 @@ impl<'a> OutputDiagnostics<'a> {
         }
 
         self.compiler_output.find_first(&contract_path).map_or(false, |contract| {
-            contract.abi.map_or(false, |abi| abi.functions.contains_key("IS_TEST"))
+            contract.abi.map_or(false, |abi| {
+                abi["functions"]
+                    .as_object()
+                    .map(|functions| functions.contains_key("IS_TEST"))
+                    .unwrap_or_default()
+            })
         })
     }
 }

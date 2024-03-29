@@ -17,13 +17,12 @@ use crate::{
             EvmOutputSelection, EwasmOutputSelection,
         },
         Ast, CompactContractBytecodeCow, DevDoc, Evm, Ewasm, FunctionDebugData, GasEstimates,
-        GeneratedSource, LosslessSolcMetadata, Offsets, Settings, SolcMetadata, StorageLayout,
-        UserDoc,
+        GeneratedSource, JsonAbi, LosslessSolcMetadata, Offsets, Settings, SolcMetadata,
+        StorageLayout, UserDoc,
     },
     sources::VersionedSourceFile,
     Artifact, ArtifactOutput, SolcConfig, SolcError, SourceFile,
 };
-use alloy_json_abi::JsonAbi;
 use alloy_primitives::hex;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, collections::BTreeMap, fs, path::Path};
@@ -54,7 +53,7 @@ pub struct ConfigurableContractArtifact {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gas_estimates: Option<GasEstimates>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub raw_metadata: Option<String>,
+    pub raw_metadata: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<SolcMetadata>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -273,72 +272,40 @@ impl ArtifactOutput for ConfigurableArtifacts {
             metadata,
             userdoc,
             devdoc,
-            ir,
             storage_layout,
             evm,
-            ewasm,
             ir_optimized,
             hash,
             factory_dependencies,
+            missing_libraries: _,
         } = contract;
 
         if self.additional_values.metadata {
-            if let Some(LosslessSolcMetadata { raw_metadata, metadata }) =
-                metadata.and_then(|zk| zk.take_solc_metadata())
-            {
-                artifact_raw_metadata = Some(raw_metadata);
-                artifact_metadata = Some(metadata);
-            }
+            artifact_raw_metadata = metadata;
         }
         if self.additional_values.userdoc {
-            artifact_userdoc = Some(userdoc);
+            artifact_userdoc = userdoc;
         }
         if self.additional_values.devdoc {
-            artifact_devdoc = Some(devdoc);
-        }
-        if self.additional_values.ewasm {
-            artifact_ewasm = ewasm;
-        }
-        if self.additional_values.ir {
-            artifact_ir = ir;
+            artifact_devdoc = devdoc;
         }
         if self.additional_values.ir_optimized {
             artifact_ir_optimized = ir_optimized;
         }
         if self.additional_values.storage_layout {
-            artifact_storage_layout = Some(storage_layout);
+            artifact_storage_layout = storage_layout;
         }
 
         if let Some(evm) = evm {
-            let Evm {
-                assembly,
-                mut bytecode,
-                deployed_bytecode,
-                method_identifiers,
-                gas_estimates,
-                legacy_assembly: _,
-            } = evm;
+            let Evm { assembly_text: assembly, mut bytecode, method_identifiers, .. } = evm;
 
-            if self.additional_values.function_debug_data {
-                artifact_function_debug_data =
-                    bytecode.as_mut().map(|code| std::mem::take(&mut code.function_debug_data));
-            }
-            if self.additional_values.generated_sources {
-                generated_sources =
-                    bytecode.as_mut().map(|code| std::mem::take(&mut code.generated_sources));
-            }
+            artifact_bytecode = bytecode.map(|b| {
+                let mut obj = crate::artifacts::BytecodeObject::Unlinked(b.object);
+                obj.resolve();
+                crate::artifacts::Bytecode::from(obj).into()
+            });
+            artifact_method_identifiers = method_identifiers;
 
-            if self.additional_values.opcodes {
-                opcodes = bytecode.as_mut().and_then(|code| code.opcodes.take())
-            }
-
-            artifact_bytecode = bytecode.map(Into::into);
-            artifact_deployed_bytecode = deployed_bytecode.map(Into::into);
-            artifact_method_identifiers = Some(method_identifiers);
-
-            if self.additional_values.gas_estimates {
-                artifact_gas_estimates = gas_estimates;
-            }
             if self.additional_values.assembly {
                 artifact_assembly = assembly;
             }
@@ -365,7 +332,7 @@ impl ArtifactOutput for ConfigurableArtifacts {
             ast: source_file.and_then(|s| s.ast.clone()),
             generated_sources: generated_sources.unwrap_or_default(),
             hash,
-            factory_dependencies,
+            factory_dependencies: factory_dependencies.unwrap_or_default(),
         }
     }
 
@@ -620,10 +587,10 @@ impl ExtraOutputFiles {
         }
 
         if self.metadata {
-            if let Some(metadata) = contract.metadata.as_ref().and_then(|m| m.solc_metadata()) {
+            if let Some(metadata) = contract.metadata.as_ref() {
                 let file = file.with_extension("metadata.json");
                 //TODO: write zkmetadata?
-                fs::write(&file, serde_json::to_string_pretty(&metadata.raw_json()?)?)
+                fs::write(&file, serde_json::to_string_pretty(&metadata)?)
                     .map_err(|err| SolcError::io(err, file))?
             }
         }
@@ -635,24 +602,9 @@ impl ExtraOutputFiles {
             }
         }
 
-        if self.ir {
-            if let Some(ref ir) = contract.ir {
-                let file = file.with_extension("ir");
-                fs::write(&file, ir).map_err(|err| SolcError::io(err, file))?
-            }
-        }
-
-        if self.ewasm {
-            if let Some(ref ewasm) = contract.ewasm {
-                let file = file.with_extension("ewasm");
-                fs::write(&file, serde_json::to_vec_pretty(ewasm)?)
-                    .map_err(|err| SolcError::io(err, file))?;
-            }
-        }
-
         if self.assembly {
             if let Some(ref evm) = contract.evm {
-                if let Some(ref asm) = evm.assembly {
+                if let Some(ref asm) = evm.assembly_text {
                     let file = file.with_extension("asm");
                     fs::write(&file, asm).map_err(|err| SolcError::io(err, file))?
                 }
@@ -662,9 +614,9 @@ impl ExtraOutputFiles {
         if self.generated_sources {
             if let Some(ref evm) = contract.evm {
                 if let Some(ref bytecode) = evm.bytecode {
-                    let file = file.with_extension("gensources");
-                    fs::write(&file, serde_json::to_vec_pretty(&bytecode.generated_sources)?)
-                        .map_err(|err| SolcError::io(err, file))?;
+                    // let file = file.with_extension("gensources");
+                    // fs::write(&file, serde_json::to_vec_pretty(&bytecode.generated_sources)?)
+                    //     .map_err(|err| SolcError::io(err, file))?;
                 }
             }
         }
@@ -672,10 +624,10 @@ impl ExtraOutputFiles {
         if self.source_map {
             if let Some(ref evm) = contract.evm {
                 if let Some(ref bytecode) = evm.bytecode {
-                    if let Some(ref sourcemap) = bytecode.source_map {
-                        let file = file.with_extension("sourcemap");
-                        fs::write(&file, sourcemap).map_err(|err| SolcError::io(err, file))?
-                    }
+                    // if let Some(ref sourcemap) = bytecode.source_map {
+                    //     let file = file.with_extension("sourcemap");
+                    //     fs::write(&file, sourcemap).map_err(|err| SolcError::io(err, file))?
+                    // }
                 }
             }
         }

@@ -1547,144 +1547,144 @@ impl OutputContracts {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
-pub struct UserDoc {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub version: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kind: Option<String>,
-    #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
-    pub methods: BTreeMap<String, UserDocNotice>,
-    #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
-    pub events: BTreeMap<String, UserDocNotice>,
-    #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
-    pub errors: BTreeMap<String, Vec<UserDocNotice>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub notice: Option<String>,
-}
+// #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+// pub struct UserDoc {
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub version: Option<u32>,
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub kind: Option<String>,
+//     #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
+//     pub methods: BTreeMap<String, UserDocNotice>,
+//     #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
+//     pub events: BTreeMap<String, UserDocNotice>,
+//     #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
+//     pub errors: BTreeMap<String, Vec<UserDocNotice>>,
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub notice: Option<String>,
+// }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-#[serde(untagged)]
-pub enum UserDocNotice {
-    // NOTE: this a variant used for constructors on older solc versions
-    Constructor(String),
-    Notice { notice: String },
-}
+// #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+// #[serde(untagged)]
+// pub enum UserDocNotice {
+//     // NOTE: this a variant used for constructors on older solc versions
+//     Constructor(String),
+//     Notice { notice: String },
+// }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
-pub struct DevDoc {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub version: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kind: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub author: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub details: Option<String>,
-    #[serde(default, rename = "custom:experimental", skip_serializing_if = "Option::is_none")]
-    pub custom_experimental: Option<String>,
-    #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
-    pub methods: BTreeMap<String, MethodDoc>,
-    #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
-    pub events: BTreeMap<String, EventDoc>,
-    #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
-    pub errors: BTreeMap<String, Vec<ErrorDoc>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-}
+// #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+// pub struct DevDoc {
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub version: Option<u32>,
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub kind: Option<String>,
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub author: Option<String>,
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub details: Option<String>,
+//     #[serde(default, rename = "custom:experimental", skip_serializing_if = "Option::is_none")]
+//     pub custom_experimental: Option<String>,
+//     #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
+//     pub methods: BTreeMap<String, MethodDoc>,
+//     #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
+//     pub events: BTreeMap<String, EventDoc>,
+//     #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
+//     pub errors: BTreeMap<String, Vec<ErrorDoc>>,
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub title: Option<String>,
+// }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
-pub struct MethodDoc {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub details: Option<String>,
-    #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
-    pub params: BTreeMap<String, String>,
-    #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
-    pub returns: BTreeMap<String, String>,
-}
+// #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+// pub struct MethodDoc {
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub details: Option<String>,
+//     #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
+//     pub params: BTreeMap<String, String>,
+//     #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
+//     pub returns: BTreeMap<String, String>,
+// }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
-pub struct EventDoc {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub details: Option<String>,
-    #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
-    pub params: BTreeMap<String, String>,
-}
+// #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+// pub struct EventDoc {
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub details: Option<String>,
+//     #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
+//     pub params: BTreeMap<String, String>,
+// }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
-pub struct ErrorDoc {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub details: Option<String>,
-    #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
-    pub params: BTreeMap<String, String>,
-}
+// #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+// pub struct ErrorDoc {
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub details: Option<String>,
+//     #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
+//     pub params: BTreeMap<String, String>,
+// }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct Evm {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub assembly: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub legacy_assembly: Option<serde_json::Value>,
-    pub bytecode: Option<Bytecode>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub deployed_bytecode: Option<DeployedBytecode>,
-    /// The list of function hashes
-    #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
-    pub method_identifiers: BTreeMap<String, String>,
-    /// Function gas estimates
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub gas_estimates: Option<GasEstimates>,
-}
+// #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+// #[serde(rename_all = "camelCase")]
+// pub struct Evm {
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub assembly: Option<String>,
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub legacy_assembly: Option<serde_json::Value>,
+//     pub bytecode: Option<Bytecode>,
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub deployed_bytecode: Option<DeployedBytecode>,
+//     /// The list of function hashes
+//     #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
+//     pub method_identifiers: BTreeMap<String, String>,
+//     /// Function gas estimates
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub gas_estimates: Option<GasEstimates>,
+// }
 
-impl Evm {
-    /// Crate internal helper do transform the underlying bytecode artifacts into a more convenient
-    /// structure
-    pub(crate) fn into_compact(self) -> CompactEvm {
-        let Evm {
-            assembly,
-            legacy_assembly,
-            bytecode,
-            deployed_bytecode,
-            method_identifiers,
-            gas_estimates,
-        } = self;
+// impl Evm {
+//     /// Crate internal helper do transform the underlying bytecode artifacts into a more convenient
+//     /// structure
+//     pub(crate) fn into_compact(self) -> CompactEvm {
+//         let Evm {
+//             assembly,
+//             legacy_assembly,
+//             bytecode,
+//             deployed_bytecode,
+//             method_identifiers,
+//             gas_estimates,
+//         } = self;
 
-        let (bytecode, deployed_bytecode) = match (bytecode, deployed_bytecode) {
-            (Some(bcode), Some(dbcode)) => (Some(bcode.into()), Some(dbcode.into())),
-            (None, Some(dbcode)) => (None, Some(dbcode.into())),
-            (Some(bcode), None) => (Some(bcode.into()), None),
-            (None, None) => (None, None),
-        };
+//         let (bytecode, deployed_bytecode) = match (bytecode, deployed_bytecode) {
+//             (Some(bcode), Some(dbcode)) => (Some(bcode.into()), Some(dbcode.into())),
+//             (None, Some(dbcode)) => (None, Some(dbcode.into())),
+//             (Some(bcode), None) => (Some(bcode.into()), None),
+//             (None, None) => (None, None),
+//         };
 
-        CompactEvm {
-            assembly,
-            legacy_assembly,
-            bytecode,
-            deployed_bytecode,
-            method_identifiers,
-            gas_estimates,
-        }
-    }
-}
+//         CompactEvm {
+//             assembly,
+//             legacy_assembly,
+//             bytecode,
+//             deployed_bytecode,
+//             method_identifiers,
+//             gas_estimates,
+//         }
+//     }
+// }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct CompactEvm {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub assembly: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub legacy_assembly: Option<serde_json::Value>,
-    pub bytecode: Option<CompactBytecode>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub deployed_bytecode: Option<CompactDeployedBytecode>,
-    /// The list of function hashes
-    #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
-    pub method_identifiers: BTreeMap<String, String>,
-    /// Function gas estimates
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub gas_estimates: Option<GasEstimates>,
-}
+// #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+// #[serde(rename_all = "camelCase")]
+// pub(crate) struct CompactEvm {
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub assembly: Option<String>,
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub legacy_assembly: Option<serde_json::Value>,
+//     pub bytecode: Option<CompactBytecode>,
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub deployed_bytecode: Option<CompactDeployedBytecode>,
+//     /// The list of function hashes
+//     #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
+//     pub method_identifiers: BTreeMap<String, String>,
+//     /// Function gas estimates
+//     #[serde(default, skip_serializing_if = "Option::is_none")]
+//     pub gas_estimates: Option<GasEstimates>,
+// }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -1736,19 +1736,19 @@ pub struct Ewasm {
     pub wasm: String,
 }
 
-/// Represents the `storage-layout` section of the `CompilerOutput` if selected.
-#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
-pub struct StorageLayout {
-    pub storage: Vec<Storage>,
-    #[serde(default, deserialize_with = "serde_helpers::default_for_null")]
-    pub types: BTreeMap<String, StorageType>,
-}
+// /// Represents the `storage-layout` section of the `CompilerOutput` if selected.
+// #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+// pub struct StorageLayout {
+//     pub storage: Vec<Storage>,
+//     #[serde(default, deserialize_with = "serde_helpers::default_for_null")]
+//     pub types: BTreeMap<String, StorageType>,
+// }
 
-impl StorageLayout {
-    fn is_empty(&self) -> bool {
-        self.storage.is_empty() && self.types.is_empty()
-    }
-}
+// impl StorageLayout {
+//     fn is_empty(&self) -> bool {
+//         self.storage.is_empty() && self.types.is_empty()
+//     }
+// }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Storage {

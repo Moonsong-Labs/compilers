@@ -4,11 +4,10 @@ use crate::{
     artifacts::{
         bytecode::{Bytecode, BytecodeObject, DeployedBytecode},
         contract::{CompactContract, CompactContractBytecode, Contract, ContractBytecode},
-        CompactContractBytecodeCow, Offsets,
+        CompactContractBytecodeCow, JsonAbi, Offsets, ZkContractBytecode,
     },
     ArtifactOutput, SourceFile, VersionedSourceFile,
 };
-use alloy_json_abi::JsonAbi;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, collections::btree_map::BTreeMap};
 
@@ -45,8 +44,10 @@ pub struct HardhatArtifact {
 impl<'a> From<&'a HardhatArtifact> for CompactContractBytecodeCow<'a> {
     fn from(artifact: &'a HardhatArtifact) -> Self {
         let c: ContractBytecode = artifact.clone().into();
+        let abi = serde_json::to_value(&artifact.abi).unwrap();
+
         CompactContractBytecodeCow {
-            abi: Some(Cow::Borrowed(&artifact.abi)),
+            abi: Some(Cow::Owned(abi)),
             bytecode: c.bytecode.map(|b| Cow::Owned(b.into())),
             deployed_bytecode: c.deployed_bytecode.map(|b| Cow::Owned(b.into())),
         }
@@ -56,7 +57,7 @@ impl<'a> From<&'a HardhatArtifact> for CompactContractBytecodeCow<'a> {
 impl From<HardhatArtifact> for CompactContract {
     fn from(artifact: HardhatArtifact) -> Self {
         CompactContract {
-            abi: Some(artifact.abi),
+            abi: Some(serde_json::to_value(&artifact.abi).unwrap()),
             bin: artifact.bytecode,
             bin_runtime: artifact.deployed_bytecode,
         }
@@ -77,7 +78,11 @@ impl From<HardhatArtifact> for ContractBytecode {
             bcode.into()
         });
 
-        ContractBytecode { abi: Some(artifact.abi), bytecode, deployed_bytecode }
+        ContractBytecode {
+            abi: Some(serde_json::to_value(&artifact.abi).unwrap()),
+            bytecode,
+            deployed_bytecode,
+        }
     }
 }
 
@@ -105,25 +110,10 @@ impl ArtifactOutput for HardhatArtifacts {
         contract: Contract,
         _source_file: Option<&SourceFile>,
     ) -> Self::Artifact {
-        let (bytecode, link_references, deployed_bytecode, deployed_link_references) =
-            if let Some(evm) = contract.evm {
-                let (deployed_bytecode, deployed_link_references) =
-                    if let Some(code) = evm.deployed_bytecode.and_then(|code| code.bytecode) {
-                        (Some(code.object), code.link_references)
-                    } else {
-                        (None, Default::default())
-                    };
+        let (link_references, deployed_bytecode, deployed_link_references) =
+            (Default::default(), None, Default::default());
 
-                let (bytecode, link_ref) = if let Some(bc) = evm.bytecode {
-                    (Some(bc.object), bc.link_references)
-                } else {
-                    (None, Default::default())
-                };
-
-                (bytecode, link_ref, deployed_bytecode, deployed_link_references)
-            } else {
-                (Default::default(), Default::default(), None, Default::default())
-            };
+        let bytecode = contract.bytecode();
 
         HardhatArtifact {
             format: HH_ARTIFACT_VERSION.to_string(),

@@ -4,31 +4,44 @@ use crate::artifacts::{
     bytecode::{
         Bytecode, BytecodeObject, CompactBytecode, CompactDeployedBytecode, DeployedBytecode,
     },
-    DevDoc, Evm, Ewasm, Offsets, StorageLayout, UserDoc,
+    Ewasm, Offsets,
 };
-use alloy_json_abi::JsonAbi;
 use alloy_primitives::Bytes;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, collections::BTreeMap};
 
-use era_compiler_solidity::SolcStandardJsonOutputContract as ZkContract;
-
 pub type Contract = era_compiler_solidity::SolcStandardJsonOutputContract;
+
+pub type JsonAbi = serde_json::Value;
+pub type UserDoc = serde_json::Value;
+pub type DevDoc = serde_json::Value;
+pub type StorageLayout = serde_json::Value;
+pub type Evm = era_compiler_solidity::SolcStandardJsonOutputContractEVM;
+
+pub(crate) trait ZkContractBytecode {
+    fn bytecode(&self) -> Option<BytecodeObject>;
+}
+
+impl ZkContractBytecode for Contract {
+    fn bytecode(&self) -> Option<BytecodeObject> {
+        self.evm.as_ref().and_then(|evm| evm.bytecode.as_ref()).map(|bytecode| {
+            let mut obj = BytecodeObject::Unlinked(bytecode.object.clone());
+            obj.resolve();
+            obj
+        })
+    }
+}
 
 impl<'a> From<&'a Contract> for CompactContractBytecodeCow<'a> {
     fn from(artifact: &'a Contract) -> Self {
-        let (bytecode, deployed_bytecode) = if let Some(ref evm) = artifact.evm {
-            (
-                evm.bytecode.clone().map(Into::into).map(Cow::Owned),
-                evm.deployed_bytecode.clone().map(Into::into).map(Cow::Owned),
-            )
-        } else {
-            (None, None)
-        };
         CompactContractBytecodeCow {
-            abi: artifact.abi.as_ref().map(Cow::Borrowed),
-            bytecode,
-            deployed_bytecode,
+            abi: None,
+            bytecode: artifact.bytecode().map(|obj| {
+                let mut compact = CompactBytecode::empty();
+                compact.object = obj;
+                Cow::Owned(compact)
+            }),
+            deployed_bytecode: None,
         }
     }
 }
@@ -93,13 +106,7 @@ impl ContractBytecode {
 
 impl From<Contract> for ContractBytecode {
     fn from(c: Contract) -> Self {
-        let (bytecode, deployed_bytecode) = if let Some(evm) = c.evm {
-            (evm.bytecode, evm.deployed_bytecode)
-        } else {
-            (None, None)
-        };
-
-        Self { abi: c.abi.map(Into::into), bytecode, deployed_bytecode }
+        Self { abi: None, bytecode: c.bytecode().map(Into::into), deployed_bytecode: None }
     }
 }
 
@@ -148,14 +155,11 @@ impl<'a> From<&'a CompactContractBytecode> for CompactContractBytecodeCow<'a> {
 
 impl From<Contract> for CompactContractBytecode {
     fn from(c: Contract) -> Self {
-        let (bytecode, deployed_bytecode) = if let Some(evm) = c.evm {
-            let evm = evm.into_compact();
-            (evm.bytecode, evm.deployed_bytecode)
-        } else {
-            (None, None)
-        };
-
-        Self { abi: c.abi.map(Into::into), bytecode, deployed_bytecode }
+        Self {
+            abi: None,
+            bytecode: c.bytecode().map(Bytecode::from).map(CompactBytecode::from),
+            deployed_bytecode: None,
+        }
     }
 }
 
