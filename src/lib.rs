@@ -64,6 +64,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub mod zksync;
+
 /// Utilities for creating, mocking and testing of (temporary) projects
 #[cfg(feature = "project-util")]
 pub mod project_util;
