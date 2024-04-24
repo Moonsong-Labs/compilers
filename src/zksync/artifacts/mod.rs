@@ -1,5 +1,7 @@
 use crate::{
-    artifacts::{serde_helpers, EvmVersion, Libraries, Source, SourceFile, Sources},
+    artifacts::{
+        serde_helpers, EvmVersion, FileToContractsMap, Libraries, Source, SourceFile, Sources,
+    },
     error::SolcIoError,
     remappings::Remapping,
 };
@@ -8,9 +10,13 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt, path::Path, str::FromStr};
 
+pub mod bytecode;
+pub mod contract;
 pub mod error;
 pub mod output_selection;
 
+use self::bytecode::Bytecode;
+use self::contract::Contract;
 use self::error::Error;
 use self::output_selection::OutputSelection;
 
@@ -535,7 +541,7 @@ pub struct CompilerOutput {
     #[serde(default)]
     pub sources: BTreeMap<String, SourceFile>,
     #[serde(default)]
-    pub contracts: Contracts,
+    pub contracts: FileToContractsMap<Contract>,
     /// The `solc` compiler version.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
@@ -547,6 +553,8 @@ pub struct CompilerOutput {
     pub zk_version: Option<String>,
 }
 
+/*
+TODO: See if it makes sense to implement all this api
 impl CompilerOutput {
     /// Whether the output contains a compiler error
     pub fn has_error(&self) -> bool {
@@ -634,4 +642,56 @@ impl CompilerOutput {
         self.contracts.extend(other.contracts);
         self.sources.extend(other.sources);
     }
+}
+*/
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Evm {
+    /// The contract EraVM assembly code.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assembly: Option<String>,
+    /// The contract EVM legacy assembly code.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legacy_assembly: Option<serde_json::Value>,
+    /// The contract bytecode.
+    /// Is reset by that of EraVM before yielding the compiled project artifacts.
+    pub bytecode: Option<Bytecode>,
+    /// The list of function hashes
+    #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
+    pub method_identifiers: BTreeMap<String, String>,
+    /// The extra EVMLA metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extra_metadata: Option<ExtraMetadata>,
+}
+
+///
+/// The `solc --standard-json` output contract EVM extra metadata.
+///
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtraMetadata {
+    /// The list of recursive functions.
+    #[serde(default = "Vec::new")]
+    pub recursive_functions: Vec<RecursiveFunction>,
+}
+
+///
+/// The `solc --standard-json` output contract EVM recursive function.
+///
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RecursiveFunction {
+    /// The function name.
+    pub name: String,
+    /// The creation code function block tag.
+    pub creation_tag: Option<usize>,
+    /// The runtime code function block tag.
+    pub runtime_tag: Option<usize>,
+    /// The number of input arguments.
+    #[serde(rename = "totalParamSize")]
+    pub input_size: usize,
+    /// The number of output arguments.
+    #[serde(rename = "totalRetParamSize")]
+    pub output_size: usize,
 }
