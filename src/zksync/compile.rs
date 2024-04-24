@@ -1,5 +1,6 @@
 use crate::zksync::artifacts::CompilerInput;
 
+use serde::{Serialize, Deserialize}
 use std::path::PathBuf;
 
 pub const ZKSOLC: &str = "zksolc";

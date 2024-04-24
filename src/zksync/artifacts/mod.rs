@@ -1,5 +1,5 @@
 use crate::{
-    artifacts::{serde_helpers, EvmVersion, Libraries, Source, Sources},
+    artifacts::{serde_helpers, EvmVersion, Libraries, Source, SourceFile, Sources},
     error::SolcIoError,
     remappings::Remapping,
 };
@@ -8,8 +8,10 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt, path::Path, str::FromStr};
 
+pub mod error;
 pub mod output_selection;
 
+use self::error::Error;
 use self::output_selection::OutputSelection;
 
 const SOLIDITY: &str = "Solidity";
@@ -522,5 +524,114 @@ impl fmt::Display for BytecodeHash {
             BytecodeHash::None => "none",
         };
         f.write_str(s)
+    }
+}
+
+/// Output type `solc` produces
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+pub struct CompilerOutput {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub errors: Vec<Error>,
+    #[serde(default)]
+    pub sources: BTreeMap<String, SourceFile>,
+    #[serde(default)]
+    pub contracts: Contracts,
+    /// The `solc` compiler version.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// The `solc` compiler long version.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub long_version: Option<String>,
+    /// The `zksolc` compiler version.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zk_version: Option<String>,
+}
+
+impl CompilerOutput {
+    /// Whether the output contains a compiler error
+    pub fn has_error(&self) -> bool {
+        self.errors.iter().any(|err| err.severity.is_error())
+    }
+
+    /// Checks if there are any compiler warnings that are not ignored by the specified error codes
+    /// and file paths.
+    pub fn has_warning<'a>(&self, filter: impl Into<ErrorFilter<'a>>) -> bool {
+        let filter: ErrorFilter<'_> = filter.into();
+        self.errors.iter().any(|error| {
+            if !error.severity.is_warning() {
+                return false;
+            }
+
+            let is_code_ignored = filter.is_code_ignored(error.error_code);
+
+            let is_file_ignored = error
+                .source_location
+                .as_ref()
+                .map_or(false, |location| filter.is_file_ignored(Path::new(&location.file)));
+
+            // Only consider warnings that are not ignored by either code or file path.
+            // Hence, return `true` for warnings that are not ignored, making the function
+            // return `true` if any such warnings exist.
+            !(is_code_ignored || is_file_ignored)
+        })
+    }
+
+    /// Finds the _first_ contract with the given name
+    pub fn find(&self, contract: impl AsRef<str>) -> Option<CompactContractRef<'_>> {
+        let contract_name = contract.as_ref();
+        self.contracts_iter().find_map(|(name, contract)| {
+            (name == contract_name).then(|| CompactContractRef::from(contract))
+        })
+    }
+
+    /// Finds the first contract with the given name and removes it from the set
+    pub fn remove(&mut self, contract: impl AsRef<str>) -> Option<Contract> {
+        let contract_name = contract.as_ref();
+        self.contracts.values_mut().find_map(|c| c.remove(contract_name))
+    }
+
+    /// Iterate over all contracts and their names
+    pub fn contracts_iter(&self) -> impl Iterator<Item = (&String, &Contract)> {
+        self.contracts.values().flatten()
+    }
+
+    /// Iterate over all contracts and their names
+    pub fn contracts_into_iter(self) -> impl Iterator<Item = (String, Contract)> {
+        self.contracts.into_values().flatten()
+    }
+
+    /// Given the contract file's path and the contract's name, tries to return the contract's
+    /// bytecode, runtime bytecode, and abi
+    pub fn get(&self, path: &str, contract: &str) -> Option<CompactContractRef<'_>> {
+        self.contracts
+            .get(path)
+            .and_then(|contracts| contracts.get(contract))
+            .map(CompactContractRef::from)
+    }
+
+    /// Returns the output's source files and contracts separately, wrapped in helper types that
+    /// provide several helper methods
+    pub fn split(self) -> (SourceFiles, OutputContracts) {
+        (SourceFiles(self.sources), OutputContracts(self.contracts))
+    }
+
+    /// Retains only those files the given iterator yields
+    ///
+    /// In other words, removes all contracts for files not included in the iterator
+    pub fn retain_files<'a, I>(&mut self, files: I)
+    where
+        I: IntoIterator<Item = &'a str>,
+    {
+        // Note: use `to_lowercase` here because solc not necessarily emits the exact file name,
+        // e.g. `src/utils/upgradeProxy.sol` is emitted as `src/utils/UpgradeProxy.sol`
+        let files: HashSet<_> = files.into_iter().map(|s| s.to_lowercase()).collect();
+        self.contracts.retain(|f, _| files.contains(f.to_lowercase().as_str()));
+        self.sources.retain(|f, _| files.contains(f.to_lowercase().as_str()));
+    }
+
+    pub fn merge(&mut self, other: CompilerOutput) {
+        self.errors.extend(other.errors);
+        self.contracts.extend(other.contracts);
+        self.sources.extend(other.sources);
     }
 }
