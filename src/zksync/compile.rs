@@ -244,4 +244,13 @@ mod tests {
     fn zksolc_version_works() {
         zksolc().version().unwrap();
     }
+
+    #[test]
+    fn zksolc_compile_works() {
+        let input = include_str!("../../test-data/zksync/in/compiler-in-1.json");
+        let input: CompilerInput = serde_json::from_str(input).unwrap();
+        let out = zksolc().compile(&input).unwrap();
+        let other = zksolc().compile(&serde_json::json!(input)).unwrap();
+        assert_eq!(out, other);
+    }
 }
