@@ -1,7 +1,7 @@
-use crate::zksync::artifacts::CompilerInput;
+use crate::zksync::artifacts::{CompilerInput, CompilerOutput};
 
-use serde::{Serialize, Deserialize}
-use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
+use std::{fmt, path::PathBuf};
 
 pub const ZKSOLC: &str = "zksolc";
 
@@ -28,7 +28,7 @@ impl Default for ZkSolc {
             return ZkSolc::new(zksolc);
         }
 
-        ZkSolc::new(ZkSolc)
+        ZkSolc::new(ZKSOLC)
     }
 }
 

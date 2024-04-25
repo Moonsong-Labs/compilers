@@ -9,9 +9,6 @@ use std::collections::{BTreeMap, HashSet};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Contract {
-    /// The Ethereum Contract Metadata.
-    /// See <https://docs.soliditylang.org/en/develop/metadata.html>
-    // CHECKED
     pub abi: Option<JsonAbi>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
