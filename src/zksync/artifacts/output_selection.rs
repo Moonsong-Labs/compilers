@@ -5,14 +5,14 @@ use std::collections::HashSet;
 ///
 /// The `solc --standard-json` output selection.
 ///
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct OutputSelection {
     /// Only the 'all' wildcard is available for robustness reasons.
     #[serde(rename = "*", skip_serializing_if = "Option::is_none")]
     pub all: Option<FileOutputSelection>,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FileOutputSelection {
     /// The per-file output selections.
     #[serde(rename = "", skip_serializing_if = "Option::is_none")]

@@ -6,9 +6,13 @@ use crate::{
     remappings::Remapping,
 };
 
-use semver::Version;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, fmt, path::Path, str::FromStr};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt,
+    path::Path,
+    str::FromStr,
+};
 
 pub mod bytecode;
 pub mod contract;
@@ -79,6 +83,11 @@ impl CompilerInput {
         }
         res
     }
+}
+
+/*
+impl CompilerInput {
+    TODO: See if it makes sense to implement the whole API
 
     /// Sets the settings for compilation
     #[must_use]
@@ -87,12 +96,6 @@ impl CompilerInput {
             if !settings.remappings.is_empty() {
                 warn!("omitting remappings supplied for the yul sources");
                 settings.remappings = vec![];
-            }
-            if let Some(debug) = settings.debug.as_mut() {
-                if debug.revert_strings.is_some() {
-                    warn!("omitting revertStrings supplied for the yul sources");
-                    debug.revert_strings = None;
-                }
             }
         }
         self.settings = settings;
@@ -103,13 +106,6 @@ impl CompilerInput {
     #[must_use]
     pub fn evm_version(mut self, version: EvmVersion) -> Self {
         self.settings.evm_version = Some(version);
-        self
-    }
-
-    /// Sets the optimizer runs (default = 200)
-    #[must_use]
-    pub fn optimizer(mut self, runs: usize) -> Self {
-        self.settings.optimizer.runs(runs);
         self
     }
 
@@ -168,6 +164,7 @@ impl CompilerInput {
         self.language == YUL
     }
 }
+*/
 
 /// zksolc standard json input settings. See:
 /// https://docs.zksync.io/zk-stack/components/compiler/toolchain/solidity.html#standard-json for differences
@@ -212,7 +209,9 @@ impl Settings {
     pub fn new(output_selection: impl Into<OutputSelection>) -> Self {
         Self { output_selection: output_selection.into(), ..Default::default() }
     }
-
+}
+/* TODO: see if we implement this api
+impl Settings {
     /* TODO: Settings to manipulate output selection
     * evaluate implementing this API if needed/possible
     /// Inserts a set of `ContractOutputSelection`
@@ -364,6 +363,7 @@ impl Settings {
         self
     }
 }
+*/
 
 impl Default for Settings {
     fn default() -> Self {
@@ -376,7 +376,6 @@ impl Default for Settings {
             libraries: Default::default(),
             remappings: Default::default(),
         }
-        .with_ast()
     }
 }
 
@@ -553,13 +552,36 @@ pub struct CompilerOutput {
     pub zk_version: Option<String>,
 }
 
-/*
-TODO: See if it makes sense to implement all this api
 impl CompilerOutput {
     /// Whether the output contains a compiler error
     pub fn has_error(&self) -> bool {
         self.errors.iter().any(|err| err.severity.is_error())
     }
+
+    /// Retains only those files the given iterator yields
+    ///
+    /// In other words, removes all contracts for files not included in the iterator
+    pub fn retain_files<'a, I>(&mut self, files: I)
+    where
+        I: IntoIterator<Item = &'a str>,
+    {
+        // Note: use `to_lowercase` here because solc not necessarily emits the exact file name,
+        // e.g. `src/utils/upgradeProxy.sol` is emitted as `src/utils/UpgradeProxy.sol`
+        let files: HashSet<_> = files.into_iter().map(|s| s.to_lowercase()).collect();
+        self.contracts.retain(|f, _| files.contains(f.to_lowercase().as_str()));
+        self.sources.retain(|f, _| files.contains(f.to_lowercase().as_str()));
+    }
+
+    pub fn merge(&mut self, other: CompilerOutput) {
+        self.errors.extend(other.errors);
+        self.contracts.extend(other.contracts);
+        self.sources.extend(other.sources);
+    }
+}
+
+/*
+TODO: See if it makes sense to implement all this api
+impl CompilerOutput {
 
     /// Checks if there are any compiler warnings that are not ignored by the specified error codes
     /// and file paths.
@@ -623,25 +645,6 @@ impl CompilerOutput {
         (SourceFiles(self.sources), OutputContracts(self.contracts))
     }
 
-    /// Retains only those files the given iterator yields
-    ///
-    /// In other words, removes all contracts for files not included in the iterator
-    pub fn retain_files<'a, I>(&mut self, files: I)
-    where
-        I: IntoIterator<Item = &'a str>,
-    {
-        // Note: use `to_lowercase` here because solc not necessarily emits the exact file name,
-        // e.g. `src/utils/upgradeProxy.sol` is emitted as `src/utils/UpgradeProxy.sol`
-        let files: HashSet<_> = files.into_iter().map(|s| s.to_lowercase()).collect();
-        self.contracts.retain(|f, _| files.contains(f.to_lowercase().as_str()));
-        self.sources.retain(|f, _| files.contains(f.to_lowercase().as_str()));
-    }
-
-    pub fn merge(&mut self, other: CompilerOutput) {
-        self.errors.extend(other.errors);
-        self.contracts.extend(other.contracts);
-        self.sources.extend(other.sources);
-    }
 }
 */
 
@@ -668,7 +671,7 @@ pub struct Evm {
 ///
 /// The `solc --standard-json` output contract EVM extra metadata.
 ///
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtraMetadata {
     /// The list of recursive functions.
@@ -679,7 +682,7 @@ pub struct ExtraMetadata {
 ///
 /// The `solc --standard-json` output contract EVM recursive function.
 ///
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RecursiveFunction {
     /// The function name.

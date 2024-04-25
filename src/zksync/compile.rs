@@ -1,7 +1,14 @@
+use crate::error::{Result, SolcError};
 use crate::zksync::artifacts::{CompilerInput, CompilerOutput};
 
-use serde::{Deserialize, Serialize};
-use std::{fmt, path::PathBuf};
+use semver::Version;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+    process::{Command, Output, Stdio},
+    str::FromStr,
+};
 
 pub const ZKSOLC: &str = "zksolc";
 
@@ -128,7 +135,7 @@ impl ZkSolc {
         let output = self.compile_output(input)?;
 
         // Only run UTF-8 validation once.
-        let output = std::str::from_utf8(&output).map_err(|_| ZkSolcError::InvalidUtf8)?;
+        let output = std::str::from_utf8(&output).map_err(|_| SolcError::InvalidUtf8)?;
 
         Ok(serde_json::from_str(output)?)
     }
@@ -180,104 +187,8 @@ impl ZkSolc {
         Ok(version)
     }
 
-    fn map_io_err(&self) -> impl FnOnce(std::io::Error) -> ZkSolcError + '_ {
-        move |err| ZkSolcError::io(err, &self.zksolc)
-    }
-}
-
-#[cfg(feature = "async")]
-impl ZkSolc {
-    /// Convenience function for compiling all sources under the given path
-    pub async fn async_compile_source(&self, path: impl AsRef<Path>) -> Result<CompilerOutput> {
-        self.async_compile(&CompilerInput::with_sources(Source::async_read_all_from(path).await?))
-            .await
-    }
-
-    /// Run `zksolc --stand-json` and return the `zksolc`'s output as
-    /// `CompilerOutput`
-    pub async fn async_compile<T: Serialize>(&self, input: &T) -> Result<CompilerOutput> {
-        self.async_compile_as(input).await
-    }
-
-    /// Run `zksolc --stand-json` and return the `zksolc`'s output as the given json
-    /// output
-    pub async fn async_compile_as<T: Serialize, D: DeserializeOwned>(
-        &self,
-        input: &T,
-    ) -> Result<D> {
-        let output = self.async_compile_output(input).await?;
-        Ok(serde_json::from_slice(&output)?)
-    }
-
-    pub async fn async_compile_output<T: Serialize>(&self, input: &T) -> Result<Vec<u8>> {
-        use tokio::io::AsyncWriteExt;
-        let content = serde_json::to_vec(input)?;
-        let mut cmd = tokio::process::Command::new(&self.zksolc);
-        if let Some(ref base_path) = self.base_path {
-            cmd.current_dir(base_path);
-        }
-        let mut child = cmd
-            .args(&self.args)
-            .arg("--standard-json")
-            .stdin(Stdio::piped())
-            .stderr(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .map_err(self.map_io_err())?;
-        let stdin = child.stdin.as_mut().unwrap();
-        stdin.write_all(&content).await.map_err(self.map_io_err())?;
-        stdin.flush().await.map_err(self.map_io_err())?;
-        compile_output(child.wait_with_output().await.map_err(self.map_io_err())?)
-    }
-
-    pub async fn async_version(&self) -> Result<Version> {
-        let mut cmd = tokio::process::Command::new(&self.zksolc);
-        cmd.arg("--version").stdin(Stdio::piped()).stderr(Stdio::piped()).stdout(Stdio::piped());
-        debug!(?cmd, "getting version");
-        let output = cmd.output().await.map_err(self.map_io_err())?;
-        let version = version_from_output(output)?;
-        debug!(%version);
-        Ok(version)
-    }
-
-    /// Compiles all `CompilerInput`s with their associated `ZkSolc`.
-    ///
-    /// This will buffer up to `n` `zksolc` processes and then return the `CompilerOutput`s in the
-    /// order in which they complete. No more than `n` futures will be buffered at any point in
-    /// time, and less than `n` may also be buffered depending on the state of each future.
-    ///
-    /// # Examples
-    ///
-    /// Compile 2 `CompilerInput`s at once
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{CompilerInput, ZkSolc};
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let zksolc1 = ZkSolc::default();
-    /// let zksolc2 = ZkSolc::default();
-    /// let input1 = CompilerInput::new("contracts")?[0].clone();
-    /// let input2 = CompilerInput::new("src")?[0].clone();
-    ///
-    /// let outputs = ZkSolc::compile_many([(zksolc1, input1), (zksolc2, input2)], 2).await.flattened()?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn compile_many<I>(jobs: I, n: usize) -> crate::many::CompiledMany
-    where
-        I: IntoIterator<Item = (ZkSolc, CompilerInput)>,
-    {
-        use futures_util::stream::StreamExt;
-
-        let outputs =
-            futures_util::stream::iter(jobs.into_iter().map(|(zksolc, input)| async {
-                (zksolc.async_compile(&input).await, zksolc, input)
-            }))
-            .buffer_unordered(n)
-            .collect::<Vec<_>>()
-            .await;
-
-        crate::many::CompiledMany::new(outputs)
+    fn map_io_err(&self) -> impl FnOnce(std::io::Error) -> SolcError + '_ {
+        move |err| SolcError::io(err, &self.zksolc)
     }
 }
 
@@ -285,7 +196,7 @@ fn compile_output(output: Output) -> Result<Vec<u8>> {
     if output.status.success() {
         Ok(output.stdout)
     } else {
-        Err(ZkSolcError::zksolc_output(&output))
+        Err(SolcError::solc_output(&output))
     }
 }
 
@@ -296,11 +207,11 @@ fn version_from_output(output: Output) -> Result<Version> {
             .lines()
             .filter(|l| !l.trim().is_empty())
             .last()
-            .ok_or_else(|| ZkSolcError::msg("Version not found in zksolc output"))?;
+            .ok_or_else(|| SolcError::msg("Version not found in zksolc output"))?;
         // NOTE: semver doesn't like `+` in g++ in build metadata which is invalid semver
         Ok(Version::from_str(&version.trim_start_matches("Version: ").replace(".g++", ".gcc"))?)
     } else {
-        Err(ZkSolcError::zksolc_output(&output))
+        Err(SolcError::solc_output(&output))
     }
 }
 
@@ -313,5 +224,19 @@ impl AsRef<Path> for ZkSolc {
 impl<T: Into<PathBuf>> From<T> for ZkSolc {
     fn from(zksolc: T) -> Self {
         ZkSolc::new(zksolc.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn zksolc() -> ZkSolc {
+        ZkSolc::default()
+    }
+
+    #[test]
+    fn zksolc_version_works() {
+        zksolc().version().unwrap();
     }
 }
