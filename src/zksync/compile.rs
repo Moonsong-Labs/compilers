@@ -1,5 +1,8 @@
 use crate::error::{Result, SolcError};
-use crate::zksync::artifacts::{CompilerInput, CompilerOutput};
+use crate::zksync::{
+    artifact_output::Artifact,
+    artifacts::{CompilerInput, CompilerOutput},
+};
 
 use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -252,5 +255,32 @@ mod tests {
         let out = zksolc().compile(&input).unwrap();
         let other = zksolc().compile(&serde_json::json!(input)).unwrap();
         assert_eq!(out, other);
+    }
+
+    #[test]
+    fn zksolc_can_compile_with_remapped_links() {
+        let input: CompilerInput =
+            serde_json::from_str(include_str!("../../test-data/zksync/library-remapping-in.json"))
+                .unwrap();
+        let out = zksolc().compile(&input).unwrap();
+        //println!("{:?}", out);
+        let (_, mut contracts) = out.split();
+        let contract = contracts.remove("LinkTest").unwrap();
+        let bytecode = &contract.get_bytecode().unwrap().object;
+        assert!(!bytecode.is_unlinked());
+    }
+
+    #[test]
+    fn zksolc_can_compile_with_remapped_links_temp_dir() {
+        let input: CompilerInput = serde_json::from_str(include_str!(
+            "../../test-data/zksync/library-remapping-in-2.json"
+        ))
+        .unwrap();
+        let out = zksolc().compile(&input).unwrap();
+        println!("{:?}", out);
+        let (_, mut contracts) = out.split();
+        let contract = contracts.remove("LinkTest").unwrap();
+        let bytecode = &contract.get_bytecode().unwrap().object;
+        assert!(!bytecode.is_unlinked());
     }
 }

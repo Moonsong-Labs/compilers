@@ -1,6 +1,7 @@
 use crate::{
     artifacts::{
-        serde_helpers, EvmVersion, FileToContractsMap, Libraries, Source, SourceFile, Sources,
+        serde_helpers, EvmVersion, FileToContractsMap, Libraries, Source, SourceFile, SourceFiles,
+        Sources,
     },
     error::SolcIoError,
     remappings::Remapping,
@@ -20,12 +21,16 @@ pub mod error;
 pub mod output_selection;
 
 use self::bytecode::Bytecode;
-use self::contract::Contract;
+use self::contract::{CompactContractRef, Contract};
 use self::error::Error;
 use self::output_selection::OutputSelection;
 
 const SOLIDITY: &str = "Solidity";
 const YUL: &str = "Yul";
+
+/// file -> (contract name -> Contract)
+///
+pub type Contracts = FileToContractsMap<Contract>;
 
 /// Input type `solc` expects.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -525,7 +530,7 @@ impl FromStr for BytecodeHash {
 impl fmt::Display for BytecodeHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            BytecodeHash::Keccak256 => "keccack256",
+            BytecodeHash::Keccak256 => "keccak256",
             BytecodeHash::None => "none",
         };
         f.write_str(s)
@@ -565,7 +570,7 @@ impl CompilerOutput {
     where
         I: IntoIterator<Item = &'a str>,
     {
-        // Note: use `to_lowercase` here because solc not necessarily emits the exact file name,
+        // Note: use `to_lowercase` here because zksolc not necessarily emits the exact file name,
         // e.g. `src/utils/upgradeProxy.sol` is emitted as `src/utils/UpgradeProxy.sol`
         let files: HashSet<_> = files.into_iter().map(|s| s.to_lowercase()).collect();
         self.contracts.retain(|f, _| files.contains(f.to_lowercase().as_str()));
@@ -576,6 +581,12 @@ impl CompilerOutput {
         self.errors.extend(other.errors);
         self.contracts.extend(other.contracts);
         self.sources.extend(other.sources);
+    }
+
+    /// Returns the output's source files and contracts separately, wrapped in helper types that
+    /// provide several helper methods
+    pub fn split(self) -> (SourceFiles, OutputContracts) {
+        (SourceFiles(self.sources), OutputContracts(self.contracts))
     }
 }
 
@@ -639,11 +650,6 @@ impl CompilerOutput {
             .map(CompactContractRef::from)
     }
 
-    /// Returns the output's source files and contracts separately, wrapped in helper types that
-    /// provide several helper methods
-    pub fn split(self) -> (SourceFiles, OutputContracts) {
-        (SourceFiles(self.sources), OutputContracts(self.contracts))
-    }
 
 }
 */
@@ -697,4 +703,34 @@ pub struct RecursiveFunction {
     /// The number of output arguments.
     #[serde(rename = "totalRetParamSize")]
     pub output_size: usize,
+}
+
+/// A wrapper helper type for the `Contracts` type alias
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct OutputContracts(pub Contracts);
+
+impl OutputContracts {
+    /// Returns an iterator over all contracts and their source names.
+    pub fn into_contracts(self) -> impl Iterator<Item = (String, Contract)> {
+        self.0.into_values().flatten()
+    }
+
+    /// Iterate over all contracts and their names
+    pub fn contracts_iter(&self) -> impl Iterator<Item = (&String, &Contract)> {
+        self.0.values().flatten()
+    }
+
+    /// Finds the _first_ contract with the given name
+    pub fn find(&self, contract: impl AsRef<str>) -> Option<CompactContractRef<'_>> {
+        let contract_name = contract.as_ref();
+        self.contracts_iter().find_map(|(name, contract)| {
+            (name == contract_name).then(|| CompactContractRef::from(contract))
+        })
+    }
+
+    /// Finds the first contract with the given name and removes it from the set
+    pub fn remove(&mut self, contract: impl AsRef<str>) -> Option<Contract> {
+        let contract_name = contract.as_ref();
+        self.0.values_mut().find_map(|c| c.remove(contract_name))
+    }
 }
