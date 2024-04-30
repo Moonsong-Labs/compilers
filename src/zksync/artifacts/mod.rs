@@ -4,9 +4,12 @@ use crate::{
         Sources,
     },
     error::SolcIoError,
+    filter::FilteredSources,
     remappings::Remapping,
+    zksync::compile::ZkSolc,
 };
 
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
@@ -31,6 +34,12 @@ const YUL: &str = "Yul";
 /// file -> (contract name -> Contract)
 ///
 pub type Contracts = FileToContractsMap<Contract>;
+
+/// A set of different ZkSolc installations with their version and the sources to be compiled
+pub(crate) type VersionedSources = BTreeMap<ZkSolc, (Version, Sources)>;
+
+/// A set of different ZkSolc installations with their version and the sources to be compiled
+pub(crate) type VersionedFilteredSources = BTreeMap<ZkSolc, (Version, FilteredSources)>;
 
 /// Input type `solc` expects.
 #[derive(Clone, Debug, Serialize, Deserialize)]

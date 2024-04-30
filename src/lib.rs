@@ -43,6 +43,7 @@ pub mod remappings;
 
 mod filter;
 pub use filter::{FileFilter, TestFileFilter};
+use zksync::{compile::ZkSolc, config::ZkSolcConfig};
 
 pub mod report;
 
@@ -107,6 +108,10 @@ pub struct Project<T: ArtifactOutput = ConfigurableArtifacts> {
     ///
     /// This is a noop on other platforms
     pub slash_paths: bool,
+
+    /// Where to find zksolc
+    pub zksync_zksolc: ZkSolc,
+    pub zksync_zksolc_config: ZkSolcConfig,
 }
 
 impl Project {
@@ -561,6 +566,50 @@ impl<T: ArtifactOutput> Project<T> {
 
         Ok(input)
     }
+
+    pub(crate) fn zksync_configure_zksolc_with_version(
+        &self,
+        mut zksolc: ZkSolc,
+        version: Option<Version>,
+        mut include_paths: IncludePaths,
+    ) -> ZkSolc {
+        if !zksolc.args.iter().any(|arg| arg == "--allow-paths") {
+            if let Some([allow, libs]) = self.allowed_paths.args() {
+                zksolc = zksolc.arg(allow).arg(libs);
+            }
+        }
+        let base_path = format!("{}", self.root().display());
+        if !base_path.is_empty() {
+            zksolc = zksolc.with_base_path(self.root());
+            include_paths.extend(self.include_paths.paths().cloned());
+            // `--base-path` and `--include-path` conflict if set to the same path, so
+            // as a precaution, we ensure here that the `--base-path` is not also used
+            // for `--include-path`
+            include_paths.remove(self.root());
+            zksolc = zksolc.args(include_paths.args());
+        }
+        zksolc
+    }
+
+    #[instrument(skip_all, name = "zksync_compile")]
+    pub fn zksync_compile(&self) -> Result<ProjectCompileOutput<T>> {
+        let sources = self.paths.read_input_files()?;
+        trace!("found {} sources to compile: {:?}", sources.len(), sources.keys());
+        self.zksync_compile_with_version(&self.zksync_zksolc, sources)
+    }
+
+    pub fn zksync_compile_with_version(
+        &self,
+        zksolc: &ZkSolc,
+        sources: Sources,
+    ) -> Result<ProjectCompileOutput<T>> {
+        zksync::compile::project::ProjectCompiler::with_sources_and_zksolc(
+            self,
+            sources,
+            zksolc.clone(),
+        )?
+        .compile()
+    }
 }
 
 pub struct ProjectBuilder<T: ArtifactOutput = ConfigurableArtifacts> {
@@ -595,6 +644,10 @@ pub struct ProjectBuilder<T: ArtifactOutput = ConfigurableArtifacts> {
     /// Paths to use for solc's `--include-path`
     include_paths: IncludePaths,
     solc_jobs: Option<usize>,
+
+    /// Where to find zksolc
+    zksync_zksolc: Option<ZkSolc>,
+    zksync_zksolc_config: Option<ZkSolcConfig>,
 }
 
 impl<T: ArtifactOutput> ProjectBuilder<T> {
@@ -617,6 +670,9 @@ impl<T: ArtifactOutput> ProjectBuilder<T> {
             allowed_paths: Default::default(),
             include_paths: Default::default(),
             solc_jobs: None,
+
+            zksync_zksolc: None,
+            zksync_zksolc_config: None,
         }
     }
 
@@ -769,6 +825,8 @@ impl<T: ArtifactOutput> ProjectBuilder<T> {
             build_info,
             slash_paths,
             ignored_file_paths,
+            zksync_zksolc,
+            zksync_zksolc_config,
             ..
         } = self;
         ProjectBuilder {
@@ -788,6 +846,8 @@ impl<T: ArtifactOutput> ProjectBuilder<T> {
             include_paths,
             solc_jobs,
             build_info,
+            zksync_zksolc,
+            zksync_zksolc_config,
         }
     }
 
@@ -849,6 +909,8 @@ impl<T: ArtifactOutput> ProjectBuilder<T> {
             offline,
             build_info,
             slash_paths,
+            zksync_zksolc,
+            zksync_zksolc_config,
         } = self;
 
         let mut paths = paths.map(Ok).unwrap_or_else(ProjectPathsConfig::current_hardhat)?;
@@ -863,6 +925,9 @@ impl<T: ArtifactOutput> ProjectBuilder<T> {
 
         // allow every contract under root by default
         allowed_paths.insert(paths.root.clone());
+
+        let zksync_zksolc = zksync_zksolc.unwrap_or_default();
+        let zksync_zksolc_config = zksync_zksolc_config.unwrap_or_default();
 
         Ok(Project {
             paths,
@@ -883,6 +948,8 @@ impl<T: ArtifactOutput> ProjectBuilder<T> {
                 .unwrap_or(1),
             offline,
             slash_paths,
+            zksync_zksolc,
+            zksync_zksolc_config,
         })
     }
 }

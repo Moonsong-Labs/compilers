@@ -37,6 +37,9 @@ pub struct ProjectPathsConfig {
     pub libraries: Vec<PathBuf>,
     /// The compiler remappings
     pub remappings: Vec<Remapping>,
+
+    /// Where to store zksolc build artifacts
+    pub zksync_artifacts: PathBuf,
 }
 
 impl ProjectPathsConfig {
@@ -644,6 +647,7 @@ pub struct ProjectPathsConfigBuilder {
     scripts: Option<PathBuf>,
     libraries: Option<Vec<PathBuf>>,
     remappings: Option<Vec<Remapping>>,
+    zksync_artifacts: Option<PathBuf>,
 }
 
 impl ProjectPathsConfigBuilder {
@@ -720,6 +724,9 @@ impl ProjectPathsConfigBuilder {
         let libraries = self.libraries.unwrap_or_else(|| ProjectPathsConfig::find_libs(&root));
         let artifacts =
             self.artifacts.unwrap_or_else(|| ProjectPathsConfig::find_artifacts_dir(&root));
+        let zksync_artifacts = self
+            .zksync_artifacts
+            .unwrap_or_else(|| utils::find_fave_or_alt_path(&root, "zkout", "zkartifacts"));
 
         ProjectPathsConfig {
             cache: self
@@ -735,6 +742,7 @@ impl ProjectPathsConfigBuilder {
                 .unwrap_or_else(|| libraries.iter().flat_map(Remapping::find_many).collect()),
             libraries,
             root,
+            zksync_artifacts,
         }
     }
 

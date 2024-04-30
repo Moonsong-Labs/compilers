@@ -1,8 +1,5 @@
 use crate::error::{Result, SolcError};
-use crate::zksync::{
-    artifact_output::Artifact,
-    artifacts::{CompilerInput, CompilerOutput},
-};
+use crate::zksync::artifacts::{CompilerInput, CompilerOutput};
 
 use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -12,6 +9,9 @@ use std::{
     process::{Command, Output, Stdio},
     str::FromStr,
 };
+
+pub mod output;
+pub mod project;
 
 pub const ZKSOLC: &str = "zksolc";
 
