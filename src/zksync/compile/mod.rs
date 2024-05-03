@@ -100,17 +100,6 @@ impl ZkSolc {
     ///
     /// In other words, this removes those files from the `CompilerOutput` that are __not__ included
     /// in the provided `CompilerInput`.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{CompilerInput, ZkSolc};
-    ///
-    /// let zksolc = ZkSolc::default();
-    /// let input = CompilerInput::new("./contracts")?[0].clone();
-    /// let output = zksolc.compile_exact(&input)?;
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
     pub fn compile_exact(&self, input: &CompilerInput) -> Result<CompilerOutput> {
         let mut out = self.compile(input)?;
         out.retain_files(input.sources.keys().filter_map(|p| p.to_str()));
@@ -118,17 +107,6 @@ impl ZkSolc {
     }
 
     /// Compiles with `--standard-json` and deserializes the output as [`CompilerOutput`].
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{CompilerInput, ZkSolc};
-    ///
-    /// let zksolc = ZkSolc::default();
-    /// let input = CompilerInput::new("./contracts")?;
-    /// let output = zksolc.compile(&input)?;
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
     pub fn compile<T: Serialize>(&self, input: &T) -> Result<CompilerOutput> {
         self.compile_as(input)
     }
@@ -238,6 +216,7 @@ impl<T: Into<PathBuf>> From<T> for ZkSolc {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::zksync::artifact_output::Artifact;
 
     fn zksolc() -> ZkSolc {
         ZkSolc::default()
@@ -250,7 +229,7 @@ mod tests {
 
     #[test]
     fn zksolc_compile_works() {
-        let input = include_str!("../../test-data/zksync/in/compiler-in-1.json");
+        let input = include_str!("../../../test-data/zksync/in/compiler-in-1.json");
         let input: CompilerInput = serde_json::from_str(input).unwrap();
         let out = zksolc().compile(&input).unwrap();
         let other = zksolc().compile(&serde_json::json!(input)).unwrap();
@@ -259,9 +238,10 @@ mod tests {
 
     #[test]
     fn zksolc_can_compile_with_remapped_links() {
-        let input: CompilerInput =
-            serde_json::from_str(include_str!("../../test-data/zksync/library-remapping-in.json"))
-                .unwrap();
+        let input: CompilerInput = serde_json::from_str(include_str!(
+            "../../../test-data/zksync/library-remapping-in.json"
+        ))
+        .unwrap();
         let out = zksolc().compile(&input).unwrap();
         //println!("{:?}", out);
         let (_, mut contracts) = out.split();
@@ -273,7 +253,7 @@ mod tests {
     #[test]
     fn zksolc_can_compile_with_remapped_links_temp_dir() {
         let input: CompilerInput = serde_json::from_str(include_str!(
-            "../../test-data/zksync/library-remapping-in-2.json"
+            "../../../test-data/zksync/library-remapping-in-2.json"
         ))
         .unwrap();
         let out = zksolc().compile(&input).unwrap();

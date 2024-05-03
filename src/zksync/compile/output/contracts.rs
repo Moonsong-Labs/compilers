@@ -1,17 +1,16 @@
 use crate::{
     artifacts::FileToContractsMap,
     zksync::{
-        artifact_output::{ArtifactOutput, OutputContext},
-        artifacts::contract::Contract,
+        artifact_output::{
+            files::{MappedArtifactFile, MappedArtifactFiles, MappedContract},
+            output_file, output_file_versioned, OutputContext,
+        },
+        artifacts::contract::{CompactContractRef, Contract},
     },
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::BTreeMap,
-    ops::{Deref, DerefMut},
-    path::Path,
-};
+use std::{collections::BTreeMap, ops::Deref, path::Path};
 
 /// file -> [(contract name  -> Contract + solc version)]
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -47,10 +46,7 @@ impl VersionedContracts {
     ///
     /// This will compute the appropriate output file paths but will _not_ write them.
     /// The `ctx` is used to avoid possible conflicts
-    pub(crate) fn artifact_files<T: ArtifactOutput + ?Sized>(
-        &self,
-        ctx: &OutputContext<'_>,
-    ) -> MappedArtifactFiles<'_> {
+    pub(crate) fn artifact_files(&self, ctx: &OutputContext<'_>) -> MappedArtifactFiles<'_> {
         let mut output_files = MappedArtifactFiles::with_capacity(self.len());
         for (file, contracts) in self.iter() {
             for (name, versioned_contracts) in contracts {
@@ -65,9 +61,9 @@ impl VersionedContracts {
                         trace!("use existing artifact file {:?}", existing_artifact,);
                         existing_artifact
                     } else if versioned_contracts.len() > 1 {
-                        T::output_file_versioned(file, name, &contract.version)
+                        output_file_versioned(file, name, &contract.version)
                     } else {
-                        T::output_file(file, name)
+                        output_file(file, name)
                     };
 
                     trace!(

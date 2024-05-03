@@ -43,7 +43,13 @@ pub mod remappings;
 
 mod filter;
 pub use filter::{FileFilter, TestFileFilter};
-use zksync::{compile::ZkSolc, config::ZkSolcConfig};
+
+pub mod zksync;
+use zksync::{
+    artifact_output::zk::ZkArtifactOutput,
+    compile::{output::ProjectCompileOutput as ZkProjectCompileOutput, ZkSolc},
+    config::ZkSolcConfig,
+};
 
 pub mod report;
 
@@ -64,8 +70,6 @@ use std::{
     collections::{BTreeMap, HashSet},
     path::{Path, PathBuf},
 };
-
-pub mod zksync;
 
 /// Utilities for creating, mocking and testing of (temporary) projects
 #[cfg(feature = "project-util")]
@@ -112,6 +116,7 @@ pub struct Project<T: ArtifactOutput = ConfigurableArtifacts> {
     /// Where to find zksolc
     pub zksync_zksolc: ZkSolc,
     pub zksync_zksolc_config: ZkSolcConfig,
+    pub zksync_artifacts: ZkArtifactOutput,
 }
 
 impl Project {
@@ -592,7 +597,7 @@ impl<T: ArtifactOutput> Project<T> {
     }
 
     #[instrument(skip_all, name = "zksync_compile")]
-    pub fn zksync_compile(&self) -> Result<ProjectCompileOutput<T>> {
+    pub fn zksync_compile(&self) -> Result<ZkProjectCompileOutput> {
         let sources = self.paths.read_input_files()?;
         trace!("found {} sources to compile: {:?}", sources.len(), sources.keys());
         self.zksync_compile_with_version(&self.zksync_zksolc, sources)
@@ -602,7 +607,7 @@ impl<T: ArtifactOutput> Project<T> {
         &self,
         zksolc: &ZkSolc,
         sources: Sources,
-    ) -> Result<ProjectCompileOutput<T>> {
+    ) -> Result<ZkProjectCompileOutput> {
         zksync::compile::project::ProjectCompiler::with_sources_and_zksolc(
             self,
             sources,
@@ -928,6 +933,7 @@ impl<T: ArtifactOutput> ProjectBuilder<T> {
 
         let zksync_zksolc = zksync_zksolc.unwrap_or_default();
         let zksync_zksolc_config = zksync_zksolc_config.unwrap_or_default();
+        let zksync_artifacts = ZkArtifactOutput();
 
         Ok(Project {
             paths,
@@ -950,6 +956,7 @@ impl<T: ArtifactOutput> ProjectBuilder<T> {
             slash_paths,
             zksync_zksolc,
             zksync_zksolc_config,
+            zksync_artifacts,
         })
     }
 }

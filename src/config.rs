@@ -5,7 +5,9 @@ use crate::{
     flatten::{collect_ordered_deps, combine_version_pragmas},
     remappings::Remapping,
     resolver::{Graph, SolImportAlias},
-    utils, Source, Sources,
+    utils,
+    zksync::cache::ZKSYNC_SOLIDITY_FILES_CACHE_FILENAME,
+    Source, Sources,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -40,6 +42,8 @@ pub struct ProjectPathsConfig {
 
     /// Where to store zksolc build artifacts
     pub zksync_artifacts: PathBuf,
+    /// Path to the zksync cache, if any
+    pub zksync_cache: PathBuf,
 }
 
 impl ProjectPathsConfig {
@@ -80,11 +84,30 @@ impl ProjectPathsConfig {
         }
     }
 
+    /// Returns a new [ProjectPaths] instance that contains all directories configured for this
+    /// project that are used for zksync
+    pub fn zksync_paths(&self) -> ProjectPaths {
+        ProjectPaths {
+            artifacts: self.artifacts.clone(),
+            build_infos: self.build_infos.clone(),
+            sources: self.sources.clone(),
+            tests: self.tests.clone(),
+            scripts: self.scripts.clone(),
+            libraries: self.libraries.iter().cloned().collect(),
+        }
+    }
+
     /// Same as [`paths`][ProjectPathsConfig::paths] but strips the `root` form all paths.
     ///
     /// See: [`ProjectPaths::strip_prefix_all`]
     pub fn paths_relative(&self) -> ProjectPaths {
         let mut paths = self.paths();
+        paths.strip_prefix_all(&self.root);
+        paths
+    }
+
+    pub fn zksync_paths_relative(&self) -> ProjectPaths {
+        let mut paths = self.zksync_paths();
         paths.strip_prefix_all(&self.root);
         paths
     }
@@ -648,6 +671,7 @@ pub struct ProjectPathsConfigBuilder {
     libraries: Option<Vec<PathBuf>>,
     remappings: Option<Vec<Remapping>>,
     zksync_artifacts: Option<PathBuf>,
+    zksync_cache: Option<PathBuf>,
 }
 
 impl ProjectPathsConfigBuilder {
@@ -741,8 +765,11 @@ impl ProjectPathsConfigBuilder {
                 .remappings
                 .unwrap_or_else(|| libraries.iter().flat_map(Remapping::find_many).collect()),
             libraries,
-            root,
             zksync_artifacts,
+            zksync_cache: self
+                .zksync_cache
+                .unwrap_or_else(|| root.join("cache").join(ZKSYNC_SOLIDITY_FILES_CACHE_FILENAME)),
+            root,
         }
     }
 

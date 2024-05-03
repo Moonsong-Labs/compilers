@@ -7,7 +7,10 @@ use crate::{
     filter::{FilteredSource, FilteredSourceInfo, FilteredSources},
     resolver::GraphEdges,
     utils,
-    zksync::{artifact_output::OutputContext, config::ZkSolcConfig},
+    zksync::{
+        artifact_output::{zk::ZkContractArtifact, OutputContext},
+        config::ZkSolcConfig,
+    },
     ArtifactFile, ArtifactOutput, Artifacts, ArtifactsMap, Project, ProjectPathsConfig, Source,
 };
 use semver::Version;
@@ -30,7 +33,7 @@ use std::{
 const ETHERS_FORMAT_VERSION: &str = "ethers-rs-sol-cache-3";
 
 /// The file name of the default cache file
-pub const SOLIDITY_FILES_CACHE_FILENAME: &str = "solidity-files-cache.json";
+pub const ZKSYNC_SOLIDITY_FILES_CACHE_FILENAME: &str = "zksync-solidity-files-cache.json";
 
 /// A multi version cache file
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -122,8 +125,8 @@ impl SolFilesCache {
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     pub fn read_joined(paths: &ProjectPathsConfig) -> Result<Self> {
-        let mut cache = SolFilesCache::read(&paths.cache)?;
-        cache.join_entries(&paths.root).join_artifacts_files(&paths.artifacts);
+        let mut cache = SolFilesCache::read(&paths.zksync_cache)?;
+        cache.join_entries(&paths.root).join_artifacts_files(&paths.zksync_artifacts);
         Ok(cache)
     }
 
@@ -258,11 +261,11 @@ impl SolFilesCache {
     ///
     /// **NOTE**: unless the cache's `files` keys were modified `contract_file` is expected to be
     /// absolute.
-    pub fn read_artifact<Artifact: DeserializeOwned>(
+    pub fn read_artifact(
         &self,
         contract_file: impl AsRef<Path>,
         contract_name: impl AsRef<str>,
-    ) -> Result<Artifact> {
+    ) -> Result<ZkContractArtifact> {
         let contract_file = contract_file.as_ref();
         let contract_name = contract_name.as_ref();
 
@@ -288,9 +291,7 @@ impl SolFilesCache {
     /// let artifacts = cache.read_artifacts::<CompactContractBytecode>()?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
-    pub fn read_artifacts<Artifact: DeserializeOwned + Send + Sync>(
-        &self,
-    ) -> Result<Artifacts<Artifact>> {
+    pub fn read_artifacts(&self) -> Result<Artifacts<ZkContractArtifact>> {
         use rayon::prelude::*;
 
         let artifacts = self
@@ -346,35 +347,6 @@ impl SolFilesCache {
                     other.get_mut().merge_artifacts(entry);
                 }
             }
-        }
-    }
-}
-
-// async variants for read and write
-#[cfg(feature = "async")]
-impl SolFilesCache {
-    pub async fn async_read(path: impl AsRef<Path>) -> Result<Self> {
-        let path = path.as_ref().to_owned();
-        Self::asyncify(move || Self::read(path)).await
-    }
-
-    pub async fn async_write(&self, path: impl AsRef<Path>) -> Result<()> {
-        let path = path.as_ref();
-        let content = serde_json::to_vec(self)?;
-        tokio::fs::write(path, content).await.map_err(|err| SolcError::io(err, path))
-    }
-
-    async fn asyncify<F, T>(f: F) -> Result<T>
-    where
-        F: FnOnce() -> Result<T> + Send + 'static,
-        T: Send + 'static,
-    {
-        match tokio::task::spawn_blocking(f).await {
-            Ok(res) => res,
-            Err(_) => Err(SolcError::io(
-                std::io::Error::new(std::io::ErrorKind::Other, "background task failed"),
-                "",
-            )),
         }
     }
 }
@@ -589,7 +561,7 @@ pub(crate) struct ArtifactsCacheInner<'a, T: ArtifactOutput> {
     pub cache: SolFilesCache,
 
     /// All already existing artifacts.
-    pub cached_artifacts: Artifacts<T::Artifact>,
+    pub cached_artifacts: Artifacts<ZkContractArtifact>,
 
     /// Relationship between all the files.
     pub edges: GraphEdges,
@@ -839,9 +811,9 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
             invalidate_cache: bool,
         ) -> SolFilesCache {
             // the currently configured paths
-            let paths = project.paths.paths_relative();
+            let paths = project.paths.zksync_paths_relative();
 
-            if !invalidate_cache && project.cache_path().exists() {
+            if !invalidate_cache && project.paths.zksync_cache.exists() {
                 if let Ok(cache) = SolFilesCache::read_joined(&project.paths) {
                     if cache.paths == paths {
                         // unchanged project paths
@@ -869,7 +841,7 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
             let cached_artifacts = if project.paths.artifacts.exists() {
                 trace!("reading artifacts from cache...");
                 // if we failed to read the whole set of artifacts we use an empty set
-                let artifacts = cache.read_artifacts::<T::Artifact>().unwrap_or_default();
+                let artifacts = cache.read_artifacts().unwrap_or_default();
                 trace!("read {} artifacts from cache", artifacts.artifact_files().count());
                 artifacts
             } else {
@@ -951,9 +923,9 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
     /// Returns all the _cached_ artifacts.
     pub fn consume(
         self,
-        written_artifacts: &Artifacts<T::Artifact>,
+        written_artifacts: &Artifacts<ZkContractArtifact>,
         write_to_disk: bool,
-    ) -> Result<Artifacts<T::Artifact>> {
+    ) -> Result<Artifacts<ZkContractArtifact>> {
         let ArtifactsCache::Cached(cache) = self else {
             trace!("no cache configured, ephemeral");
             return Ok(Default::default());

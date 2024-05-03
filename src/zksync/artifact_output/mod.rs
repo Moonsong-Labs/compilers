@@ -1,5 +1,9 @@
-use std::borrow::Cow;
-use std::path::{Path, PathBuf};
+use std::{
+    borrow::Cow,
+    collections::HashSet,
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 
 use semver::Version;
 
@@ -8,6 +12,9 @@ use crate::zksync::{
     artifacts::{bytecode::Bytecode, contract::CompactContractBytecodeCow},
     cache::SolFilesCache,
 };
+
+pub mod files;
+pub mod zk;
 
 pub trait Artifact {
     /// Returns the reference to the `bytecode`
@@ -37,6 +44,7 @@ where
         self.into()
     }
 }
+/*
 
 pub trait ArtifactOutput {
     /// Represents the artifact that will be stored for a `Contract`
@@ -422,6 +430,123 @@ pub trait ArtifactOutput {
     ) -> Option<Self::Artifact>;
 }
 
+*/
+
+/// Returns the file name for the contract's artifact
+/// `Greeter.json`
+fn output_file_name(name: impl AsRef<str>) -> PathBuf {
+    format!("{}.json", name.as_ref()).into()
+}
+
+/// Returns the file name for the contract's artifact and the given version
+/// `Greeter.0.8.11.json`
+fn output_file_name_versioned(name: impl AsRef<str>, version: &Version) -> PathBuf {
+    format!("{}.{}.{}.{}.json", name.as_ref(), version.major, version.minor, version.patch).into()
+}
+
+/// Returns the appropriate file name for the conflicting file.
+///
+/// This should ensure that the resulting `PathBuf` is conflict free, which could be possible if
+/// there are two separate contract files (in different folders) that contain the same contract:
+///
+/// `src/A.sol::A`
+/// `src/nested/A.sol::A`
+///
+/// Which would result in the same `PathBuf` if only the file and contract name is taken into
+/// account, [`Self::output_file`].
+///
+/// This return a unique output file
+fn conflict_free_output_file(
+    already_taken: &HashSet<PathBuf>,
+    conflict: PathBuf,
+    contract_file: impl AsRef<Path>,
+    artifacts_folder: impl AsRef<Path>,
+) -> PathBuf {
+    let artifacts_folder = artifacts_folder.as_ref();
+    let mut rel_candidate = conflict;
+    if let Ok(stripped) = rel_candidate.strip_prefix(artifacts_folder) {
+        rel_candidate = stripped.to_path_buf();
+    }
+    #[allow(clippy::redundant_clone)] // false positive
+    let mut candidate = rel_candidate.clone();
+    let contract_file = contract_file.as_ref();
+    let mut current_parent = contract_file.parent();
+
+    while let Some(parent_name) = current_parent.and_then(|f| f.file_name()) {
+        // this is problematic if both files are absolute
+        candidate = Path::new(parent_name).join(&candidate);
+        let out_path = artifacts_folder.join(&candidate);
+        if !already_taken.contains(&out_path) {
+            trace!("found alternative output file={:?} for {:?}", out_path, contract_file);
+            return out_path;
+        }
+        current_parent = current_parent.and_then(|f| f.parent());
+    }
+
+    // this means we haven't found an alternative yet, which shouldn't actually happen since
+    // `contract_file` are unique, but just to be safe, handle this case in which case
+    // we simply numerate the parent folder
+
+    trace!("no conflict free output file found after traversing the file");
+
+    let mut num = 1;
+
+    loop {
+        // this will attempt to find an alternate path by numerating the first component in the
+        // path: `<root>+_<num>/....sol`
+        let mut components = rel_candidate.components();
+        let first = components.next().expect("path not empty");
+        let name = first.as_os_str();
+        let mut numerated = OsString::with_capacity(name.len() + 2);
+        numerated.push(name);
+        numerated.push("_");
+        numerated.push(num.to_string());
+
+        let candidate: PathBuf = Some(numerated.as_os_str())
+            .into_iter()
+            .chain(components.map(|c| c.as_os_str()))
+            .collect();
+        if !already_taken.contains(&candidate) {
+            trace!("found alternative output file={:?} for {:?}", candidate, contract_file);
+            return candidate;
+        }
+
+        num += 1;
+    }
+}
+/// Returns the path to the contract's artifact location based on the contract's file and name
+///
+/// This returns `contract.sol/contract.json` by default
+pub fn output_file(contract_file: impl AsRef<Path>, name: impl AsRef<str>) -> PathBuf {
+    let name = name.as_ref();
+    contract_file
+        .as_ref()
+        .file_name()
+        .map(Path::new)
+        .map(|p| p.join(output_file_name(name)))
+        .unwrap_or_else(|| output_file_name(name))
+}
+
+/// Returns the path to the contract's artifact location based on the contract's file, name and
+/// version
+///
+/// This returns `contract.sol/contract.0.8.11.json` by default
+pub fn output_file_versioned(
+    contract_file: impl AsRef<Path>,
+    name: impl AsRef<str>,
+    version: &Version,
+) -> PathBuf {
+    let name = name.as_ref();
+    contract_file
+        .as_ref()
+        .file_name()
+        .map(Path::new)
+        .map(|p| p.join(output_file_name_versioned(name, version)))
+        .unwrap_or_else(|| output_file_name_versioned(name, version))
+}
+
+// === impl OutputContext
+//
 /// Additional context to use during [`ArtifactOutput::on_output()`]
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
@@ -439,8 +564,6 @@ pub struct OutputContext<'a> {
     /// ```
     pub cache: Cow<'a, SolFilesCache>,
 }
-
-// === impl OutputContext
 
 impl<'a> OutputContext<'a> {
     /// Create a new context with the given cache file

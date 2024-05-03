@@ -97,11 +97,6 @@ impl CompilerInput {
         }
         res
     }
-}
-
-/*
-impl CompilerInput {
-    TODO: See if it makes sense to implement the whole API
 
     /// Sets the settings for compilation
     #[must_use]
@@ -113,13 +108,6 @@ impl CompilerInput {
             }
         }
         self.settings = settings;
-        self
-    }
-
-    /// Sets the EVM version for compilation
-    #[must_use]
-    pub fn evm_version(mut self, version: EvmVersion) -> Self {
-        self.settings.evm_version = Some(version);
         self
     }
 
@@ -143,12 +131,10 @@ impl CompilerInput {
         self
     }
 
-    /// Sets the path of the source files to `root` adjoined to the existing path
-    #[must_use]
-    pub fn join_path(mut self, root: impl AsRef<Path>) -> Self {
-        let root = root.as_ref();
-        self.sources = self.sources.into_iter().map(|(path, s)| (root.join(path), s)).collect();
-        self
+    /// The flag indicating whether the current [CompilerInput] is
+    /// constructed for the yul sources
+    pub fn is_yul(&self) -> bool {
+        self.language == YUL
     }
 
     /// Removes the `base` path from all source files
@@ -171,12 +157,29 @@ impl CompilerInput {
         self.settings = self.settings.with_base_path(base);
         self.strip_prefix(base)
     }
+}
 
-    /// The flag indicating whether the current [CompilerInput] is
-    /// constructed for the yul sources
-    pub fn is_yul(&self) -> bool {
-        self.language == YUL
+/*
+impl CompilerInput {
+    TODO: See if it makes sense to implement the whole API
+
+
+    /// Sets the EVM version for compilation
+    #[must_use]
+    pub fn evm_version(mut self, version: EvmVersion) -> Self {
+        self.settings.evm_version = Some(version);
+        self
     }
+
+    /// Sets the path of the source files to `root` adjoined to the existing path
+    #[must_use]
+    pub fn join_path(mut self, root: impl AsRef<Path>) -> Self {
+        let root = root.as_ref();
+        self.sources = self.sources.into_iter().map(|(path, s)| (root.join(path), s)).collect();
+        self
+    }
+
+
 }
 */
 
@@ -222,6 +225,23 @@ impl Settings {
     /// Creates a new `Settings` instance with the given `output_selection`
     pub fn new(output_selection: impl Into<OutputSelection>) -> Self {
         Self { output_selection: output_selection.into(), ..Default::default() }
+    }
+
+    /// Strips `base` from all paths
+    pub fn with_base_path(mut self, base: impl AsRef<Path>) -> Self {
+        let base = base.as_ref();
+        self.remappings.iter_mut().for_each(|r| {
+            r.strip_prefix(base);
+        });
+
+        self.libraries.libs = self
+            .libraries
+            .libs
+            .into_iter()
+            .map(|(file, libs)| (file.strip_prefix(base).map(Into::into).unwrap_or(file), libs))
+            .collect();
+
+        self
     }
 }
 /* TODO: see if we implement this api
@@ -343,39 +363,6 @@ impl Settings {
         self
     }
 
-    /// Strips `base` from all paths
-    pub fn with_base_path(mut self, base: impl AsRef<Path>) -> Self {
-        let base = base.as_ref();
-        self.remappings.iter_mut().for_each(|r| {
-            r.strip_prefix(base);
-        });
-
-        self.libraries.libs = self
-            .libraries
-            .libs
-            .into_iter()
-            .map(|(file, libs)| (file.strip_prefix(base).map(Into::into).unwrap_or(file), libs))
-            .collect();
-
-        if let Some(mut model_checker) = self.model_checker.take() {
-            model_checker.contracts = model_checker
-                .contracts
-                .into_iter()
-                .map(|(path, contracts)| {
-                    (
-                        Path::new(&path)
-                            .strip_prefix(base)
-                            .map(|p| format!("{}", p.display()))
-                            .unwrap_or(path),
-                        contracts,
-                    )
-                })
-                .collect();
-            self.model_checker = Some(model_checker);
-        }
-
-        self
-    }
 }
 */
 
