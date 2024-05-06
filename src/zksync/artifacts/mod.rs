@@ -219,6 +219,18 @@ pub struct Settings {
     pub metadata: Option<SettingsMetadata>,
     #[serde(default)]
     pub libraries: Libraries,
+    /// Switch to missing deployable libraries detection mode.
+    /// Contracts are not compiled in this mode, and all compilation artifacts are not included.
+    #[serde(default)]
+    pub detect_missing_libraries: bool,
+
+    // zksolc arguments
+    /// A flag indicating whether to enable the system contract compilation mode.
+    #[serde(default)]
+    pub system_mode: bool,
+    /// A flag indicating whether to forcibly switch to the EVM legacy assembly pipeline.
+    #[serde(default)]
+    pub force_evmla: bool,
 }
 
 impl Settings {
@@ -376,6 +388,9 @@ impl Default for Settings {
             via_ir: None,
             libraries: Default::default(),
             remappings: Default::default(),
+            system_mode: false,
+            force_evmla: false,
+            detect_missing_libraries: false,
         }
     }
 }

@@ -2,7 +2,7 @@ use crate::error::{Result, SolcError};
 use crate::zksync::artifacts::{CompilerInput, CompilerOutput};
 
 use semver::Version;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     path::{Path, PathBuf},
@@ -107,12 +107,7 @@ impl ZkSolc {
     }
 
     /// Compiles with `--standard-json` and deserializes the output as [`CompilerOutput`].
-    pub fn compile<T: Serialize>(&self, input: &T) -> Result<CompilerOutput> {
-        self.compile_as(input)
-    }
-
-    /// Compiles with `--standard-json` and deserializes the output as the given `D`.
-    pub fn compile_as<T: Serialize, D: DeserializeOwned>(&self, input: &T) -> Result<D> {
+    pub fn compile(&self, input: &CompilerInput) -> Result<CompilerOutput> {
         let output = self.compile_output(input)?;
 
         // Only run UTF-8 validation once.
@@ -123,12 +118,25 @@ impl ZkSolc {
 
     /// Compiles with `--standard-json` and returns the raw `stdout` output.
     #[instrument(name = "compile", level = "debug", skip_all)]
-    pub fn compile_output<T: Serialize>(&self, input: &T) -> Result<Vec<u8>> {
+    pub fn compile_output(&self, input: &CompilerInput) -> Result<Vec<u8>> {
         let mut cmd = Command::new(&self.zksolc);
         if let Some(base_path) = &self.base_path {
             cmd.current_dir(base_path);
             cmd.arg("--base-path").arg(base_path);
         }
+
+        if input.settings.system_mode {
+            cmd.arg("--system-mode");
+        }
+
+        if input.settings.force_evmla {
+            cmd.arg("--force-evmla");
+        }
+
+        if input.settings.detect_missing_libraries {
+            cmd.arg("--detect-missing-libraries");
+        }
+
         cmd.args(&self.args).arg("--standard-json");
         cmd.stdin(Stdio::piped()).stderr(Stdio::piped()).stdout(Stdio::piped());
 
@@ -232,8 +240,7 @@ mod tests {
         let input = include_str!("../../../test-data/zksync/in/compiler-in-1.json");
         let input: CompilerInput = serde_json::from_str(input).unwrap();
         let out = zksolc().compile(&input).unwrap();
-        let other = zksolc().compile(&serde_json::json!(input)).unwrap();
-        assert_eq!(out, other);
+        assert!(!out.has_error());
     }
 
     #[test]
@@ -243,7 +250,6 @@ mod tests {
         ))
         .unwrap();
         let out = zksolc().compile(&input).unwrap();
-        //println!("{:?}", out);
         let (_, mut contracts) = out.split();
         let contract = contracts.remove("LinkTest").unwrap();
         let bytecode = &contract.get_bytecode().unwrap().object;
