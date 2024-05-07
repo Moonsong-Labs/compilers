@@ -572,10 +572,15 @@ impl<T: ArtifactOutput> Project<T> {
         Ok(input)
     }
 
+    pub(crate) fn zksync_configure_zksolc(&self, zksolc: ZkSolc) -> ZkSolc {
+        let version = zksolc.version().ok();
+        self.zksync_configure_zksolc_with_version(zksolc, version, Default::default())
+    }
+
     pub(crate) fn zksync_configure_zksolc_with_version(
         &self,
         mut zksolc: ZkSolc,
-        version: Option<Version>,
+        _version: Option<Version>,
         mut include_paths: IncludePaths,
     ) -> ZkSolc {
         if !zksolc.args.iter().any(|arg| arg == "--allow-paths") {
@@ -614,6 +619,24 @@ impl<T: ArtifactOutput> Project<T> {
             zksolc.clone(),
         )?
         .compile()
+    }
+
+    pub fn zksync_compile_files<P, I>(&self, files: I) -> Result<ZkProjectCompileOutput>
+    where
+        I: IntoIterator<Item = P>,
+        P: Into<PathBuf>,
+    {
+        let sources = Source::read_all(files)?;
+
+        /*
+        #[cfg(feature = "svm-solc")]
+        if self.auto_detect {
+            return project::ProjectCompiler::with_sources(self, sources)?.compile();
+        }
+        */
+
+        let zksolc = self.zksync_configure_zksolc(self.zksync_zksolc.clone());
+        self.zksync_compile_with_version(&zksolc, sources)
     }
 }
 
