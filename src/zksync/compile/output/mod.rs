@@ -64,6 +64,22 @@ impl ProjectCompileOutput {
     }
 }
 
+impl fmt::Display for ProjectCompileOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.compiler_output.is_unchanged() {
+            f.write_str("Nothing to compile")
+        } else {
+            self.compiler_output
+                .diagnostics(
+                    &self.ignored_error_codes,
+                    &self.ignored_file_paths,
+                    self.compiler_severity_filter,
+                )
+                .fmt(f)
+        }
+    }
+}
+
 /// The aggregated output of (multiple) compile jobs
 ///
 /// This is effectively a solc version aware `CompilerOutput`
