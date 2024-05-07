@@ -48,6 +48,20 @@ impl ProjectCompileOutput {
         self.compiled_artifacts.slash_paths();
         self.cached_artifacts.slash_paths();
     }
+
+    /// Returns whether this type does not contain compiled contracts.
+    pub fn is_unchanged(&self) -> bool {
+        self.compiler_output.is_unchanged()
+    }
+
+    /// Returns whether any errors were emitted by the compiler.
+    pub fn has_compiler_errors(&self) -> bool {
+        self.compiler_output.has_error(
+            &self.ignored_error_codes,
+            &self.ignored_file_paths,
+            &self.compiler_severity_filter,
+        )
+    }
 }
 
 /// The aggregated output of (multiple) compile jobs
