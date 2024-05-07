@@ -62,6 +62,28 @@ impl ProjectCompileOutput {
             &self.compiler_severity_filter,
         )
     }
+
+    pub fn versioned_artifacts(
+        &self,
+    ) -> impl Iterator<Item = (String, (&ZkContractArtifact, &Version))> {
+        self.cached_artifacts
+            .artifact_files()
+            .chain(self.compiled_artifacts.artifact_files())
+            .filter_map(|artifact| {
+                Self::contract_name(&artifact.file)
+                    .map(|name| (name, (&artifact.artifact, &artifact.version)))
+            })
+    }
+
+    pub fn artifacts(&self) -> impl Iterator<Item = (String, &ZkContractArtifact)> {
+        self.versioned_artifacts().map(|(name, (artifact, _))| (name, artifact))
+    }
+
+    // NOTE: This belongs to the Artifact Output trait in solc but it is just needed
+    // here for now, should move somewhere else if it is called from multiple places.
+    fn contract_name(file: impl AsRef<Path>) -> Option<String> {
+        file.as_ref().file_stem().and_then(|s| s.to_str().map(|s| s.to_string()))
+    }
 }
 
 impl fmt::Display for ProjectCompileOutput {
