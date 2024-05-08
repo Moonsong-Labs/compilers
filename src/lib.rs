@@ -572,6 +572,11 @@ impl<T: ArtifactOutput> Project<T> {
         Ok(input)
     }
 
+    /// Returns the path to the cache file
+    pub fn zksync_cache_path(&self) -> &PathBuf {
+        &self.paths.zksync_cache
+    }
+
     pub(crate) fn zksync_configure_zksolc(&self, zksolc: ZkSolc) -> ZkSolc {
         let version = zksolc.version().ok();
         self.zksync_configure_zksolc_with_version(zksolc, version, Default::default())

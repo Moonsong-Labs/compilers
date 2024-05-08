@@ -80,24 +80,6 @@ impl SolFilesCache {
         self.files.get_mut(file.as_ref())
     }
 
-    /// Reads the cache json file from the given path
-    ///
-    /// See also [`Self::read_joined()`]
-    ///
-    /// # Errors
-    ///
-    /// If the cache file does not exist
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{cache::SolFilesCache, Project};
-    ///
-    /// let project = Project::builder().build()?;
-    /// let mut cache = SolFilesCache::read(project.cache_path())?;
-    /// cache.join_artifacts_files(project.artifacts_path());
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
     #[instrument(skip_all, name = "sol-files-cache::read")]
     pub fn read(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
@@ -193,26 +175,6 @@ impl SolFilesCache {
         self.files.values().all(|entry| entry.all_artifacts_exist())
     }
 
-    /// Strips the given prefix from all `file` paths that identify a `CacheEntry` to make them
-    /// relative to the given `base` argument
-    ///
-    /// In other words this sets the keys (the file path of a solidity file) relative to the `base`
-    /// argument, so that the key `/Users/me/project/src/Greeter.sol` will be changed to
-    /// `src/Greeter.sol` if `base` is `/Users/me/project`
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{artifacts::contract::CompactContract, cache::SolFilesCache, Project};
-    ///
-    /// let project = Project::builder().build()?;
-    /// let cache =
-    ///     SolFilesCache::read(project.cache_path())?.with_stripped_file_prefixes(project.root());
-    /// let artifact: CompactContract = cache.read_artifact("src/Greeter.sol", "Greeter")?;
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
-    ///
-    /// **Note:** this only affects the source files, see [`Self::strip_artifact_files_prefixes()`]
     pub fn with_stripped_file_prefixes(mut self, base: impl AsRef<Path>) -> Self {
         let base = base.as_ref();
         self.files = self
@@ -223,18 +185,6 @@ impl SolFilesCache {
         self
     }
 
-    /// Returns the path to the artifact of the given `(file, contract)` pair
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{cache::SolFilesCache, Project};
-    ///
-    /// let project = Project::builder().build()?;
-    /// let cache = SolFilesCache::read_joined(&project.paths)?;
-    /// cache.find_artifact_path("/Users/git/myproject/src/Greeter.sol", "Greeter");
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
     pub fn find_artifact_path(
         &self,
         contract_file: impl AsRef<Path>,
@@ -244,23 +194,6 @@ impl SolFilesCache {
         entry.find_artifact_path(contract_name)
     }
 
-    /// Finds the path to the artifact of the given `(file, contract)` pair (see
-    /// [`Self::find_artifact_path()`]) and deserializes the artifact file as JSON.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{artifacts::contract::CompactContract, cache::SolFilesCache, Project};
-    ///
-    /// let project = Project::builder().build()?;
-    /// let cache = SolFilesCache::read_joined(&project.paths)?;
-    /// let artifact: CompactContract =
-    ///     cache.read_artifact("/Users/git/myproject/src/Greeter.sol", "Greeter")?;
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
-    ///
-    /// **NOTE**: unless the cache's `files` keys were modified `contract_file` is expected to be
-    /// absolute.
     pub fn read_artifact(
         &self,
         contract_file: impl AsRef<Path>,
@@ -277,20 +210,6 @@ impl SolFilesCache {
         utils::read_json_file(artifact_path)
     }
 
-    /// Reads all cached artifacts from disk using the given ArtifactOutput handler
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{
-    ///     artifacts::contract::CompactContractBytecode, cache::SolFilesCache, Project,
-    /// };
-    ///
-    /// let project = Project::builder().build()?;
-    /// let cache = SolFilesCache::read_joined(&project.paths)?;
-    /// let artifacts = cache.read_artifacts::<CompactContractBytecode>()?;
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
     pub fn read_artifacts(&self) -> Result<Artifacts<ZkContractArtifact>> {
         use rayon::prelude::*;
 
@@ -305,10 +224,6 @@ impl SolFilesCache {
         Ok(Artifacts(artifacts))
     }
 
-    /// Retains only the `CacheEntry` specified by the file + version combination.
-    ///
-    /// In other words, only keep those cache entries with the paths (keys) that the iterator yields
-    /// and only keep the versions in the cache entry that the version iterator yields.
     pub fn retain<'a, I, V>(&mut self, files: I)
     where
         I: IntoIterator<Item = (&'a Path, V)>,
@@ -813,7 +728,7 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
             // the currently configured paths
             let paths = project.paths.zksync_paths_relative();
 
-            if !invalidate_cache && project.paths.zksync_cache.exists() {
+            if !invalidate_cache && project.zksync_cache_path().exists() {
                 if let Ok(cache) = SolFilesCache::read_joined(&project.paths) {
                     if cache.paths == paths {
                         // unchanged project paths
@@ -1011,7 +926,7 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
             cache
                 .strip_entries_prefix(project.root())
                 .strip_artifact_files_prefixes(project.artifacts_path());
-            cache.write(project.cache_path())?;
+            cache.write(project.zksync_cache_path())?;
         }
 
         Ok(cached_artifacts)
