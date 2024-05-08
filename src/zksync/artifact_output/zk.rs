@@ -9,13 +9,18 @@ use crate::{
             conflict_free_output_file, files::MappedContract, output_file, output_file_versioned,
             OutputContext,
         },
-        artifacts::{bytecode::Bytecode, contract::Contract, Evm},
+        artifacts::{
+            bytecode::Bytecode,
+            contract::{CompactContractBytecodeCow, Contract},
+            Evm,
+        },
         compile::output::contracts::VersionedContracts,
     },
 };
 use alloy_json_abi::JsonAbi;
 use serde::{Deserialize, Serialize};
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashSet},
     fs,
     path::Path,
@@ -54,6 +59,15 @@ pub struct ZkContractArtifact {
     pub id: Option<u32>,
 }
 
+impl<'a> From<&'a ZkContractArtifact> for CompactContractBytecodeCow<'a> {
+    fn from(artifact: &'a ZkContractArtifact) -> Self {
+        CompactContractBytecodeCow {
+            abi: artifact.abi.as_ref().map(Cow::Borrowed),
+            bytecode: artifact.bytecode.as_ref().map(Cow::Borrowed),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub struct ZkArtifactOutput();
 
@@ -68,7 +82,6 @@ impl ZkArtifactOutput {
         let mut artifact_bytecode = None;
         let mut artifact_method_identifiers = None;
         let mut artifact_assembly = None;
-        let mut artifact_metadata = None;
 
         let Contract {
             abi,
@@ -86,9 +99,9 @@ impl ZkArtifactOutput {
         if let Some(evm) = evm {
             let Evm {
                 assembly,
-                mut bytecode,
+                bytecode,
                 method_identifiers,
-                extra_metadata,
+                extra_metadata: _,
                 legacy_assembly: _,
             } = evm;
 
@@ -106,7 +119,7 @@ impl ZkArtifactOutput {
             bytecode: artifact_bytecode,
             assembly: artifact_assembly,
             method_identifiers: artifact_method_identifiers,
-            metadata: artifact_metadata,
+            metadata,
             userdoc: Some(userdoc),
             devdoc: Some(devdoc),
             ir_optimized,
@@ -275,7 +288,7 @@ impl ZkArtifactOutput {
         _path: &str,
         file: &VersionedSourceFile,
     ) -> Option<ZkContractArtifact> {
-        file.source_file.ast.clone().map(|ast| ZkContractArtifact {
+        file.source_file.ast.clone().map(|_ast| ZkContractArtifact {
             abi: Some(JsonAbi::default()),
             id: Some(file.source_file.id),
             ..Default::default()
