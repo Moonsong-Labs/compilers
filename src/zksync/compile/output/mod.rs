@@ -26,6 +26,7 @@ use yansi::Paint;
 
 pub mod contracts;
 
+#[derive(Clone)]
 pub struct ProjectCompileOutput {
     /// contains the aggregated `CompilerOutput`
     pub(crate) compiler_output: AggregatedCompilerOutput,
@@ -77,6 +78,10 @@ impl ProjectCompileOutput {
 
     pub fn artifacts(&self) -> impl Iterator<Item = (String, &ZkContractArtifact)> {
         self.versioned_artifacts().map(|(name, (artifact, _))| (name, artifact))
+    }
+
+    pub fn output(&self) -> &AggregatedCompilerOutput {
+        &self.compiler_output
     }
 
     // NOTE: This belongs to the Artifact Output trait in solc but it is just needed

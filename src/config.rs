@@ -88,7 +88,7 @@ impl ProjectPathsConfig {
     /// project that are used for zksync
     pub fn zksync_paths(&self) -> ProjectPaths {
         ProjectPaths {
-            artifacts: self.artifacts.clone(),
+            artifacts: self.zksync_artifacts.clone(),
             build_infos: self.build_infos.clone(),
             sources: self.sources.clone(),
             tests: self.tests.clone(),
