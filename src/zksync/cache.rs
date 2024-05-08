@@ -925,7 +925,7 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
             // paths relative to the artifact's directory
             cache
                 .strip_entries_prefix(project.root())
-                .strip_artifact_files_prefixes(project.artifacts_path());
+                .strip_artifact_files_prefixes(project.zksync_artifacts_path());
             cache.write(project.zksync_cache_path())?;
         }
 

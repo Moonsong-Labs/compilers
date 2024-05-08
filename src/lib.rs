@@ -572,6 +572,11 @@ impl<T: ArtifactOutput> Project<T> {
         Ok(input)
     }
 
+    /// Returns the path to the artifacts directory
+    pub fn zksync_artifacts_path(&self) -> &PathBuf {
+        &self.paths.zksync_artifacts
+    }
+
     /// Returns the path to the cache file
     pub fn zksync_cache_path(&self) -> &PathBuf {
         &self.paths.zksync_cache
