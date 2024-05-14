@@ -99,9 +99,7 @@ full = ["async", "svm-solc"]
 # Adds extra `async` methods using `tokio` to some types.
 async = ["dep:futures-util", "dep:tokio", "tokio/fs", "tokio/process", "tokio/io-util"]
 # Enables `svm` to auto-detect and manage `solc` builds.
-# TODO: Including tokio/fs is a hack to support using it for zksync (as foundry uses the feature).
-# Should probably go under a zksync flag of depend on zsvm
-svm-solc = ["dep:svm", "dep:svm-builds", "dep:sha2", "dep:tokio", "tokio/fs"]
+svm-solc = ["dep:svm", "dep:svm-builds", "dep:sha2", "dep:tokio"]
 # Utilities for creating and testing project workspaces.
 project-util = ["dep:tempfile", "dep:fs_extra", "dep:rand"]
 
