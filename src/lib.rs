@@ -582,35 +582,6 @@ impl<T: ArtifactOutput> Project<T> {
         &self.paths.zksync_cache
     }
 
-    pub(crate) fn zksync_configure_zksolc(&self, zksolc: ZkSolc) -> ZkSolc {
-        let version = zksolc.version().ok();
-        self.zksync_configure_zksolc_with_version(zksolc, version, Default::default())
-    }
-
-    pub(crate) fn zksync_configure_zksolc_with_version(
-        &self,
-        mut zksolc: ZkSolc,
-        _version: Option<Version>,
-        mut include_paths: IncludePaths,
-    ) -> ZkSolc {
-        if !zksolc.args.iter().any(|arg| arg == "--allow-paths") {
-            if let Some([allow, libs]) = self.allowed_paths.args() {
-                zksolc = zksolc.arg(allow).arg(libs);
-            }
-        }
-        let base_path = format!("{}", self.root().display());
-        if !base_path.is_empty() {
-            zksolc = zksolc.with_base_path(self.root());
-            include_paths.extend(self.include_paths.paths().cloned());
-            // `--base-path` and `--include-path` conflict if set to the same path, so
-            // as a precaution, we ensure here that the `--base-path` is not also used
-            // for `--include-path`
-            include_paths.remove(self.root());
-            zksolc = zksolc.args(include_paths.args());
-        }
-        zksolc
-    }
-
     #[instrument(skip_all, name = "zksync_compile")]
     pub fn zksync_compile(&self) -> Result<ZkProjectCompileOutput> {
         let sources = self.paths.read_input_files()?;
@@ -622,20 +593,25 @@ impl<T: ArtifactOutput> Project<T> {
             return self.zksync_svm_compile(sources);
         }
 
-        self.zksync_compile_with_solc_version(&self.zksync_zksolc, sources)
+        self.zksync_compile_with_solc_version(&self.solc, sources)
     }
 
-    pub fn zksync_compile_with_version(
+    pub fn zksync_compile_with_solc_version(
         &self,
-        zksolc: &ZkSolc,
+        solc: &Solc,
         sources: Sources,
     ) -> Result<ZkProjectCompileOutput> {
-        zksync::compile::project::ProjectCompiler::with_sources_and_zksolc(
+        zksync::compile::project::ProjectCompiler::with_sources_and_solc(
             self,
             sources,
-            zksolc.clone(),
+            solc.clone(),
         )?
         .compile()
+    }
+
+    #[cfg(feature = "svm-solc")]
+    pub fn zksync_svm_compile(&self, sources: Sources) -> Result<ZkProjectCompileOutput> {
+        zksync::compile::project::ProjectCompiler::with_sources(self, sources)?.compile()
     }
 
     pub fn zksync_compile_files<P, I>(&self, files: I) -> Result<ZkProjectCompileOutput>
@@ -645,15 +621,14 @@ impl<T: ArtifactOutput> Project<T> {
     {
         let sources = Source::read_all(files)?;
 
-        /*
         #[cfg(feature = "svm-solc")]
         if self.auto_detect {
-            return project::ProjectCompiler::with_sources(self, sources)?.compile();
+            return zksync::compile::project::ProjectCompiler::with_sources(self, sources)?
+                .compile();
         }
-        */
 
-        let zksolc = self.zksync_configure_zksolc(self.zksync_zksolc.clone());
-        self.zksync_compile_with_version(&zksolc, sources)
+        let solc = self.configure_solc(self.solc.clone());
+        self.zksync_compile_with_solc_version(&solc, sources)
     }
 }
 

@@ -35,12 +35,6 @@ const YUL: &str = "Yul";
 ///
 pub type Contracts = FileToContractsMap<Contract>;
 
-/// A set of different ZkSolc installations with their version and the sources to be compiled
-pub(crate) type VersionedSources = BTreeMap<ZkSolc, (Version, Sources)>;
-
-/// A set of different ZkSolc installations with their version and the sources to be compiled
-pub(crate) type VersionedFilteredSources = BTreeMap<ZkSolc, (Version, FilteredSources)>;
-
 /// Input type `solc` expects.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompilerInput {

@@ -1,5 +1,8 @@
-use crate::error::{Result, SolcError};
-use crate::zksync::artifacts::{CompilerInput, CompilerOutput};
+use crate::{
+    error::{Result, SolcError},
+    zksync::artifacts::{CompilerInput, CompilerOutput},
+    Solc,
+};
 
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -117,6 +120,29 @@ impl ZkSolc {
     /// A new instance which points to `zksolc`
     pub fn new(path: impl Into<PathBuf>) -> Self {
         ZkSolc { zksolc: path.into(), base_path: None, args: Vec::new() }
+    }
+
+    /// Associate a template ZkSolc instance with a Solc compiler instance,
+    /// creating a new instance that inherits all the config and compiles
+    /// using the specific solc path.
+    pub fn from_template_and_solc(template: &Self, solc: Solc) -> Result<Self> {
+        let mut zksolc = template.clone();
+
+        // TODO: we override args and base_path with the values in solc as we
+        // asume they will come with what we want from the
+        // `Project::configure_solc_with_version call`. This might not be the case
+        // so we need to double check at some point.
+        zksolc.base_path = solc.base_path;
+        zksolc.args = solc.args;
+
+        zksolc = zksolc.arg("--solc").arg(
+            solc.solc
+                .into_os_string()
+                .into_string()
+                .map_err(|_e| SolcError::msg("Could not stringify solc path"))?,
+        );
+
+        Ok(zksolc)
     }
 
     /// Sets zksolc's base path
@@ -280,7 +306,7 @@ impl ZkSolc {
                 .map_err(|e| SolcError::msg(format!("Failed to download file: {}", e)))?;
 
             if response.status().is_success() {
-                let mut output_file = File::create(compiler_path)
+                let mut output_file = File::create(&compiler_path)
                     .await
                     .map_err(|e| SolcError::msg(format!("Failed to create output file: {}", e)))?;
 
@@ -293,7 +319,7 @@ impl ZkSolc {
                     SolcError::msg(format!("Failed to write the downloaded file: {}", e))
                 })?;
 
-                set_permissions(compiler_path, PermissionsExt::from_mode(0o755)).await.map_err(
+                set_permissions(&compiler_path, PermissionsExt::from_mode(0o755)).await.map_err(
                     |e| SolcError::msg(format!("Failed to set zksync compiler permissions: {e}")),
                 )?;
             } else {
