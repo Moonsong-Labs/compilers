@@ -212,7 +212,6 @@ pub struct Settings {
     #[serde(default)]
     pub output_selection: OutputSelection,
 
-    // different
     pub optimizer: Optimizer,
     /// Metadata settings
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -397,8 +396,7 @@ impl Default for Settings {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Optimizer {
-    // common
-    //
+    // TODO: does this have to be an option?
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
     /// Switch optimizer components on or off in detail.
@@ -406,8 +404,6 @@ pub struct Optimizer {
     /// tweaked here. If "details" is given, "enabled" can be omitted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<OptimizerDetails>,
-    // Zksolc specific
-    //
     #[serde(skip_serializing)]
     pub mode: Option<char>,
     /// Whether to try to recompile with -Oz if the bytecode is too large.

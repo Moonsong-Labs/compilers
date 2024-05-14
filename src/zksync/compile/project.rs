@@ -254,7 +254,6 @@ impl CompilerSources {
 
             match self {
                 CompilerSources::Sequential(v) => slash_versioned_sources(v),
-                CompilerSources::Parallel(v, _) => slash_versioned_sources(v),
             };
         }
     }

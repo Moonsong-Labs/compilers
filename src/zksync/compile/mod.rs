@@ -5,15 +5,76 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
+    os::unix::prelude::PermissionsExt,
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
     str::FromStr,
+};
+use tokio::{
+    fs::{set_permissions, File},
+    io::copy,
 };
 
 pub mod output;
 pub mod project;
 
 pub const ZKSOLC: &str = "zksolc";
+
+pub const ZKSOLC_RELEASES: &[Version] = &[
+    Version::new(1, 3, 5),
+    Version::new(1, 3, 6),
+    Version::new(1, 3, 7),
+    Version::new(1, 3, 8),
+    Version::new(1, 3, 9),
+    Version::new(1, 3, 10),
+    Version::new(1, 3, 11),
+    Version::new(1, 3, 13),
+    Version::new(1, 3, 14),
+    Version::new(1, 3, 17),
+    Version::new(1, 3, 19),
+    Version::new(1, 3, 21),
+    Version::new(1, 3, 22),
+    Version::new(1, 3, 23),
+    Version::new(1, 4, 0),
+    Version::new(1, 4, 1),
+];
+pub const ZKSOLC_DEFAULT__VERSION: Version = Version::new(1, 4, 1);
+
+#[derive(Debug, Clone, Serialize)]
+enum ZkSolcOS {
+    Linux,
+    MacAMD,
+    MacARM,
+}
+
+fn get_operating_system() -> Result<ZkSolcOS> {
+    match std::env::consts::OS {
+        "linux" => Ok(ZkSolcOS::Linux),
+        "macos" | "darwin" => match std::env::consts::ARCH {
+            "aarch64" => Ok(ZkSolcOS::MacARM),
+            _ => Ok(ZkSolcOS::MacAMD),
+        },
+        _ => Err(SolcError::msg(format!("Unsupported operating system {}", std::env::consts::OS))),
+    }
+}
+
+impl ZkSolcOS {
+    fn get_compiler(&self) -> &str {
+        match self {
+            ZkSolcOS::Linux => "zksolc-linux-amd64-musl-",
+            ZkSolcOS::MacAMD => "zksolc-macosx-amd64-",
+            ZkSolcOS::MacARM => "zksolc-macosx-arm64-",
+        }
+    }
+
+    fn get_download_uri(&self) -> &str {
+        match self {
+            ZkSolcOS::Linux => "linux-amd64-musl",
+            ZkSolcOS::MacAMD => "macosx-amd64",
+            ZkSolcOS::MacARM => "macosx-arm64",
+        }
+    }
+}
 
 /// Abstraction over `zksolc` command line utility
 ///
@@ -178,6 +239,91 @@ impl ZkSolc {
 
     fn map_io_err(&self) -> impl FnOnce(std::io::Error) -> SolcError + '_ {
         move |err| SolcError::io(err, &self.zksolc)
+    }
+
+    fn compilers_dir() -> Result<PathBuf> {
+        let mut compilers_dir = dirs::home_dir()
+            .ok_or(SolcError::msg("Could not build SolcManager - homedir not found"))?;
+        compilers_dir.push(".zksync");
+        Ok(compilers_dir)
+    }
+
+    fn compiler_path(version: &Version) -> Result<PathBuf> {
+        let os = get_operating_system()?;
+        Ok(Self::compilers_dir()?.join(format!("{}v{}", os.get_compiler(), version)))
+    }
+
+    /// Install zksolc version and block the thread
+    pub fn blocking_install(version: &Version) -> Result<Self> {
+        use crate::utils::RuntimeOrHandle;
+
+        trace!("blocking installing solc version \"{}\"", version);
+        // TODO: Evaluate report support
+        //crate::report::solc_installation_start(version);
+        // An async block is used because the underlying `reqwest::blocking::Client` does not behave well
+        // inside of a Tokio runtime. See: https://github.com/seanmonstar/reqwest/issues/1017
+        let install = RuntimeOrHandle::new().block_on(async {
+            let os = get_operating_system()?;
+            let download_uri = os.get_download_uri();
+            let full_download_url = format!(
+                "https://github.com/matter-labs/zksolc-bin/releases/download/v{}/zksolc-{}-v{}",
+                version, download_uri, version
+            );
+
+            let compiler_path = Self::compiler_path(version)?;
+
+            let client = reqwest::Client::new();
+            let response = client
+                .get(full_download_url)
+                .send()
+                .await
+                .map_err(|e| SolcError::msg(format!("Failed to download file: {}", e)))?;
+
+            if response.status().is_success() {
+                let mut output_file = File::create(compiler_path)
+                    .await
+                    .map_err(|e| SolcError::msg(format!("Failed to create output file: {}", e)))?;
+
+                let content = response
+                    .bytes()
+                    .await
+                    .map_err(|e| SolcError::msg(format!("failed to download file: {}", e)))?;
+
+                copy(&mut content.as_ref(), &mut output_file).await.map_err(|e| {
+                    SolcError::msg(format!("Failed to write the downloaded file: {}", e))
+                })?;
+
+                set_permissions(compiler_path, PermissionsExt::from_mode(0o755)).await.map_err(
+                    |e| SolcError::msg(format!("Failed to set zksync compiler permissions: {e}")),
+                )?;
+            } else {
+                return Err(SolcError::msg(format!(
+                    "Failed to download file: status code {}",
+                    response.status()
+                )));
+            }
+            Ok(compiler_path)
+        });
+
+        match install {
+            Ok(path) => {
+                //crate::report::solc_installation_success(version);
+                Ok(ZkSolc::new(path))
+            }
+            Err(err) => {
+                //crate::report::solc_installation_error(version, &err.to_string());
+                Err(err)
+            }
+        }
+    }
+
+    pub fn find_installed_version(version: &Version) -> Result<Option<Self>> {
+        let zksolc = Self::compiler_path(version)?;
+
+        if !zksolc.is_file() {
+            return Ok(None);
+        }
+        Ok(Some(ZkSolc::new(zksolc)))
     }
 }
 

@@ -615,7 +615,14 @@ impl<T: ArtifactOutput> Project<T> {
     pub fn zksync_compile(&self) -> Result<ZkProjectCompileOutput> {
         let sources = self.paths.read_input_files()?;
         trace!("found {} sources to compile: {:?}", sources.len(), sources.keys());
-        self.zksync_compile_with_version(&self.zksync_zksolc, sources)
+
+        #[cfg(feature = "svm-solc")]
+        if self.auto_detect {
+            trace!("using solc auto detection to compile sources");
+            return self.zksync_svm_compile(sources);
+        }
+
+        self.zksync_compile_with_solc_version(&self.zksync_zksolc, sources)
     }
 
     pub fn zksync_compile_with_version(
