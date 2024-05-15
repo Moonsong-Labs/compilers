@@ -282,7 +282,7 @@ impl ZkSolc {
     }
 
     /// Install zksolc version and block the thread
-    // TODO: Maybe this (and the whole module goes behind a zksync feature instead)
+    // TODO: Maybe this (and the whole module) goes behind a zksync feature instead
     #[cfg(feature = "async")]
     pub fn blocking_install(version: &Version) -> Result<Self> {
         use crate::utils::RuntimeOrHandle;
