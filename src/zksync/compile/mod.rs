@@ -13,6 +13,8 @@ use std::{
     process::{Command, Output, Stdio},
     str::FromStr,
 };
+
+#[cfg(feature = "async")]
 use tokio::{
     fs::{set_permissions, File},
     io::copy,
@@ -280,6 +282,8 @@ impl ZkSolc {
     }
 
     /// Install zksolc version and block the thread
+    // TODO: Maybe this (and the whole module goes behind a zksync feature instead)
+    #[cfg(feature = "async")]
     pub fn blocking_install(version: &Version) -> Result<Self> {
         use crate::utils::RuntimeOrHandle;
 
