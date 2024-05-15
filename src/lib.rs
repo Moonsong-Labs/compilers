@@ -117,6 +117,7 @@ pub struct Project<T: ArtifactOutput = ConfigurableArtifacts> {
     pub zksync_zksolc: ZkSolc,
     pub zksync_zksolc_config: ZkSolcConfig,
     pub zksync_artifacts: ZkArtifactOutput,
+    pub zksync_avoid_contracts: Option<Vec<globset::GlobMatcher>>,
 }
 
 impl Project {
@@ -584,7 +585,15 @@ impl<T: ArtifactOutput> Project<T> {
 
     #[instrument(skip_all, name = "zksync_compile")]
     pub fn zksync_compile(&self) -> Result<ZkProjectCompileOutput> {
-        let sources = self.paths.read_input_files()?;
+        let sources = match self.zksync_avoid_contracts {
+            Some(ref contracts_to_avoid) => Source::read_all(
+                self.paths
+                    .input_files()
+                    .into_iter()
+                    .filter(|p| !contracts_to_avoid.iter().any(|c| c.is_match(p))),
+            )?,
+            None => self.paths.read_input_files()?,
+        };
         trace!("found {} sources to compile: {:?}", sources.len(), sources.keys());
 
         #[cfg(feature = "svm-solc")]
@@ -668,6 +677,7 @@ pub struct ProjectBuilder<T: ArtifactOutput = ConfigurableArtifacts> {
     /// Where to find zksolc
     zksync_zksolc: Option<ZkSolc>,
     zksync_zksolc_config: Option<ZkSolcConfig>,
+    zksync_avoid_contracts: Option<Vec<globset::GlobMatcher>>,
 }
 
 impl<T: ArtifactOutput> ProjectBuilder<T> {
@@ -693,6 +703,7 @@ impl<T: ArtifactOutput> ProjectBuilder<T> {
 
             zksync_zksolc: None,
             zksync_zksolc_config: None,
+            zksync_avoid_contracts: None,
         }
     }
 
@@ -847,6 +858,7 @@ impl<T: ArtifactOutput> ProjectBuilder<T> {
             ignored_file_paths,
             zksync_zksolc,
             zksync_zksolc_config,
+            zksync_avoid_contracts,
             ..
         } = self;
         ProjectBuilder {
@@ -868,6 +880,7 @@ impl<T: ArtifactOutput> ProjectBuilder<T> {
             build_info,
             zksync_zksolc,
             zksync_zksolc_config,
+            zksync_avoid_contracts,
         }
     }
 
@@ -931,6 +944,7 @@ impl<T: ArtifactOutput> ProjectBuilder<T> {
             slash_paths,
             zksync_zksolc,
             zksync_zksolc_config,
+            zksync_avoid_contracts,
         } = self;
 
         let mut paths = paths.map(Ok).unwrap_or_else(ProjectPathsConfig::current_hardhat)?;
@@ -972,6 +986,7 @@ impl<T: ArtifactOutput> ProjectBuilder<T> {
             zksync_zksolc,
             zksync_zksolc_config,
             zksync_artifacts,
+            zksync_avoid_contracts,
         })
     }
 }
