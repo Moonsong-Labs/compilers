@@ -291,7 +291,7 @@ impl ZkSolc {
 
             if response.status().is_success() {
                 let compilers_dir = Self::compilers_dir()?;
-                if compilers_dir.exists() {
+                if !compilers_dir.exists() {
                     create_dir_all(compilers_dir).await.map_err(|e| {
                         SolcError::msg(format!("Could not create compilers path: {}", e))
                     })?;
