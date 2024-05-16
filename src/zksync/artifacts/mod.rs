@@ -398,7 +398,7 @@ pub struct Optimizer {
     /// tweaked here. If "details" is given, "enabled" can be omitted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<OptimizerDetails>,
-    #[serde(skip_serializing)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<char>,
     /// Whether to try to recompile with -Oz if the bytecode is too large.
     #[serde(skip_serializing_if = "Option::is_none")]
