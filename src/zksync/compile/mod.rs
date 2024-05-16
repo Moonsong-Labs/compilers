@@ -16,7 +16,7 @@ use std::{
 
 #[cfg(feature = "async")]
 use tokio::{
-    fs::{set_permissions, File},
+    fs::{create_dir_all, set_permissions, File},
     io::copy,
 };
 
@@ -24,26 +24,6 @@ pub mod output;
 pub mod project;
 
 pub const ZKSOLC: &str = "zksolc";
-
-pub const ZKSOLC_RELEASES: &[Version] = &[
-    Version::new(1, 3, 5),
-    Version::new(1, 3, 6),
-    Version::new(1, 3, 7),
-    Version::new(1, 3, 8),
-    Version::new(1, 3, 9),
-    Version::new(1, 3, 10),
-    Version::new(1, 3, 11),
-    Version::new(1, 3, 13),
-    Version::new(1, 3, 14),
-    Version::new(1, 3, 17),
-    Version::new(1, 3, 19),
-    Version::new(1, 3, 21),
-    Version::new(1, 3, 22),
-    Version::new(1, 3, 23),
-    Version::new(1, 4, 0),
-    Version::new(1, 4, 1),
-];
-pub const ZKSOLC_DEFAULT__VERSION: Version = Version::new(1, 4, 1);
 
 #[derive(Debug, Clone, Serialize)]
 enum ZkSolcOS {
@@ -282,7 +262,7 @@ impl ZkSolc {
     }
 
     /// Install zksolc version and block the thread
-    // TODO: Maybe this (and the whole module) goes behind a zksync feature instead
+    // TODO: Maybe this (and the whole module) goes behind a zksync feature installed
     #[cfg(feature = "async")]
     pub fn blocking_install(version: &Version) -> Result<Self> {
         use crate::utils::RuntimeOrHandle;
@@ -310,6 +290,12 @@ impl ZkSolc {
                 .map_err(|e| SolcError::msg(format!("Failed to download file: {}", e)))?;
 
             if response.status().is_success() {
+                let compilers_dir = Self::compilers_dir()?;
+                if compilers_dir.exists() {
+                    create_dir_all(compilers_dir).await.map_err(|e| {
+                        SolcError::msg(format!("Could not create compilers path: {}", e))
+                    })?;
+                }
                 let mut output_file = File::create(&compiler_path)
                     .await
                     .map_err(|e| SolcError::msg(format!("Failed to create output file: {}", e)))?;
