@@ -89,6 +89,18 @@ impl ProjectCompileOutput {
     fn contract_name(file: impl AsRef<Path>) -> Option<String> {
         file.as_ref().file_stem().and_then(|s| s.to_str().map(|s| s.to_string()))
     }
+
+    /// Returns the set of `Artifacts` that were cached and got reused during
+    /// [`crate::Project::compile()`]
+    pub fn cached_artifacts(&self) -> &Artifacts<ZkContractArtifact> {
+        &self.cached_artifacts
+    }
+
+    /// Returns the set of `Artifacts` that were compiled with `solc` in
+    /// [`crate::Project::compile()`]
+    pub fn compiled_artifacts(&self) -> &Artifacts<ZkContractArtifact> {
+        &self.compiled_artifacts
+    }
 }
 
 impl fmt::Display for ProjectCompileOutput {
