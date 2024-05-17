@@ -53,7 +53,7 @@ pub struct ZkContractArtifact {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub factory_dependencies: Option<BTreeMap<String, String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub missing_libraries: Option<HashSet<String>>,
+    pub missing_libraries: Option<Vec<String>>,
     /// The identifier of the source file
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<u32>,

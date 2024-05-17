@@ -4,10 +4,7 @@ use crate::zksync::artifacts::{bytecode::Bytecode, Evm};
 use alloy_json_abi::JsonAbi;
 use alloy_primitives::Bytes;
 use serde::{Deserialize, Serialize};
-use std::{
-    borrow::Cow,
-    collections::{BTreeMap, HashSet},
-};
+use std::{borrow::Cow, collections::BTreeMap};
 
 /// Represents a compiled solidity contract
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -34,7 +31,7 @@ pub struct Contract {
     pub factory_dependencies: Option<BTreeMap<String, String>>,
     /// The contract missing libraries.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub missing_libraries: Option<HashSet<String>>,
+    pub missing_libraries: Option<Vec<String>>,
     /// EVM-related outputs
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evm: Option<Evm>,
