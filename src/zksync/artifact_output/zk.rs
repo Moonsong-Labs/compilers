@@ -136,7 +136,7 @@ impl ZkArtifactOutput {
     ) -> Result<Artifacts<ZkContractArtifact>> {
         let mut artifacts = self.output_to_artifacts(contracts, sources, ctx, layout);
         fs::create_dir_all(&layout.zksync_artifacts).map_err(|err| {
-            error!(dir=?layout.artifacts, "Failed to create artifacts folder");
+            error!(dir=?layout.zksync_artifacts, "Failed to create artifacts folder");
             SolcIoError::new(err, &layout.zksync_artifacts)
         })?;
 
@@ -197,7 +197,7 @@ impl ZkArtifactOutput {
                             &final_artifact_paths,
                             artifact_path,
                             file,
-                            &layout.artifacts,
+                            &layout.zksync_artifacts,
                         );
                     }
                 }
@@ -256,7 +256,7 @@ impl ZkArtifactOutput {
                                     &final_artifact_paths,
                                     artifact_path,
                                     file,
-                                    &layout.artifacts,
+                                    &layout.zksync_artifacts,
                                 );
                                 final_artifact_paths.insert(artifact_path.clone());
                             }
