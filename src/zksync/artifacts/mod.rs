@@ -4,9 +4,7 @@ use crate::{
         Sources,
     },
     error::SolcIoError,
-    filter::FilteredSources,
     remappings::Remapping,
-    zksync::compile::ZkSolc,
 };
 
 use semver::Version;
@@ -95,11 +93,9 @@ impl CompilerInput {
     /// Sets the settings for compilation
     #[must_use]
     pub fn settings(mut self, mut settings: Settings) -> Self {
-        if self.is_yul() {
-            if !settings.remappings.is_empty() {
-                warn!("omitting remappings supplied for the yul sources");
-                settings.remappings = vec![];
-            }
+        if self.is_yul() && !settings.remappings.is_empty() {
+            warn!("omitting remappings supplied for the yul sources");
+            settings.remappings = vec![];
         }
         self.settings = settings;
         self

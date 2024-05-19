@@ -16,7 +16,7 @@ use crate::{
     },
     Graph, Project, Solc, Sources,
 };
-use std::{collections::BTreeMap, path::PathBuf, time::Instant};
+use std::{collections::BTreeMap, path::PathBuf};
 
 #[derive(Debug)]
 // NOTE(We need the root ArtifactOutput because of the Project type
@@ -187,18 +187,17 @@ impl<'a, T: ArtifactOutput> CompiledState<'a, T> {
                 output.sources.len()
             );
             // this emits the artifacts via the project's artifacts handler
-            let artifacts = project.zksync_artifacts.on_output(
+            project.zksync_artifacts.on_output(
                 &output.contracts,
                 &output.sources,
                 &project.paths,
                 ctx,
-            )?;
+            )?
 
             // TODO: evaluate build info support
             // emits all the build infos, if they exist
             //output.write_build_infos(project.build_info_path())?;
-
-            artifacts
+            //artifacts
         };
 
         Ok(ArtifactsState { output, cache, compiled_artifacts })
@@ -357,9 +356,9 @@ fn compile_sequential(
     zksolc: &ZkSolc,
     settings: &Settings,
     paths: &ProjectPathsConfig,
-    sparse_output: SparseOutputFilter,
-    graph: &GraphEdges,
-    create_build_info: bool,
+    _sparse_output: SparseOutputFilter,
+    _graph: &GraphEdges,
+    _create_build_info: bool,
 ) -> Result<AggregatedCompilerOutput> {
     let mut aggregated = AggregatedCompilerOutput::default();
     trace!("compiling {} jobs sequentially", input.len());
@@ -381,7 +380,7 @@ fn compile_sequential(
 
         // depending on the composition of the filtered sources, the output selection can be
         // optimized
-        let mut opt_settings = settings.clone();
+        let opt_settings = settings.clone();
         // TODO: Evaluate using sparse output filter for zksolc.
         // Since it seems we don't have file granularity for output selection
         // yet, it might not make sense to implement for now
@@ -420,8 +419,8 @@ fn compile_sequential(
                 input.sources.keys()
             );
 
-            let start = Instant::now();
             // TODO: Implement reports when incorporating the compiler abstaction PR: https://github.com/foundry-rs/compilers/pull/115
+            //let start = Instant::now();
             //report::solc_spawn(&zksolc, &version, &input, &actually_dirty);
             let output = zksolc_with_solc.compile(&input)?;
             //report::solc_success(&zksolc, &version, &output, &start.elapsed());
