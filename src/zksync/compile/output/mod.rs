@@ -1,5 +1,5 @@
 use crate::{
-    artifact_output::Artifacts,
+    artifact_output::{ArtifactId, Artifacts},
     artifacts::error::Severity,
     compile::output::{
         info::ContractInfoRef,
@@ -7,7 +7,7 @@ use crate::{
         ErrorFilter,
     },
     zksync::{
-        artifact_output::zk::ZkContractArtifact,
+        artifact_output::{artifacts_artifacts, contract_name, zk::ZkContractArtifact},
         artifacts::{
             contract::{CompactContractRef, Contract},
             error::Error,
@@ -50,6 +50,14 @@ impl ProjectCompileOutput {
         self.cached_artifacts.slash_paths();
     }
 
+    /// All artifacts together with their contract file name and name `<file name>:<name>`.
+    ///
+    /// This returns a chained iterator of both cached and recompiled contract artifacts.
+    pub fn artifact_ids(&self) -> impl Iterator<Item = (ArtifactId, &ZkContractArtifact)> {
+        let Self { cached_artifacts, compiled_artifacts, .. } = self;
+        artifacts_artifacts(cached_artifacts).chain(artifacts_artifacts(compiled_artifacts))
+    }
+
     /// Returns whether this type does not contain compiled contracts.
     pub fn is_unchanged(&self) -> bool {
         self.compiler_output.is_unchanged()
@@ -71,7 +79,7 @@ impl ProjectCompileOutput {
             .artifact_files()
             .chain(self.compiled_artifacts.artifact_files())
             .filter_map(|artifact| {
-                Self::contract_name(&artifact.file)
+                contract_name(&artifact.file)
                     .map(|name| (name, (&artifact.artifact, &artifact.version)))
             })
     }
@@ -84,10 +92,18 @@ impl ProjectCompileOutput {
         &self.compiler_output
     }
 
-    // NOTE: This belongs to the Artifact Output trait in solc but it is just needed
-    // here for now, should move somewhere else if it is called from multiple places.
-    fn contract_name(file: impl AsRef<Path>) -> Option<String> {
-        file.as_ref().file_stem().and_then(|s| s.to_str().map(|s| s.to_string()))
+    /// Finds the artifact with matching path and name
+    pub fn find(
+        &self,
+        path: impl AsRef<str>,
+        contract: impl AsRef<str>,
+    ) -> Option<&ZkContractArtifact> {
+        let contract_path = path.as_ref();
+        let contract_name = contract.as_ref();
+        if let artifact @ Some(_) = self.compiled_artifacts.find(contract_path, contract_name) {
+            return artifact;
+        }
+        self.cached_artifacts.find(contract_path, contract_name)
     }
 
     /// Returns the set of `Artifacts` that were cached and got reused during
@@ -96,10 +112,50 @@ impl ProjectCompileOutput {
         &self.cached_artifacts
     }
 
-    /// Returns the set of `Artifacts` that were compiled with `solc` in
+    /// Returns the set of `Artifacts` that were compiled with `zksolc` in
     /// [`crate::Project::compile()`]
     pub fn compiled_artifacts(&self) -> &Artifacts<ZkContractArtifact> {
         &self.compiled_artifacts
+    }
+
+    /// Removes the artifact with matching path and name
+    pub fn remove(
+        &mut self,
+        path: impl AsRef<str>,
+        contract: impl AsRef<str>,
+    ) -> Option<ZkContractArtifact> {
+        let contract_path = path.as_ref();
+        let contract_name = contract.as_ref();
+        if let artifact @ Some(_) = self.compiled_artifacts.remove(contract_path, contract_name) {
+            return artifact;
+        }
+        self.cached_artifacts.remove(contract_path, contract_name)
+    }
+
+    /// Removes the _first_ contract with the given name from the set
+    pub fn remove_first(&mut self, contract_name: impl AsRef<str>) -> Option<ZkContractArtifact> {
+        let contract_name = contract_name.as_ref();
+        if let artifact @ Some(_) = self.compiled_artifacts.remove_first(contract_name) {
+            return artifact;
+        }
+        self.cached_artifacts.remove_first(contract_name)
+    }
+
+    /// Removes the contract with matching path and name using the `<path>:<contractname>` pattern
+    /// where `path` is optional.
+    ///
+    /// If the `path` segment is `None`, then the first matching `Contract` is returned, see
+    /// [Self::remove_first]
+    pub fn remove_contract<'a>(
+        &mut self,
+        info: impl Into<ContractInfoRef<'a>>,
+    ) -> Option<ZkContractArtifact> {
+        let ContractInfoRef { path, name } = info.into();
+        if let Some(path) = path {
+            self.remove(path, name)
+        } else {
+            self.remove_first(name)
+        }
     }
 }
 
@@ -269,49 +325,16 @@ impl AggregatedCompilerOutput {
     */
 
     /// Finds the _first_ contract with the given name
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{artifacts::*, Project};
-    ///
-    /// let project = Project::builder().build()?;
-    /// let output = project.compile()?.into_output();
-    /// let contract = output.find_first("Greeter").unwrap();
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
     pub fn find_first(&self, contract: impl AsRef<str>) -> Option<CompactContractRef<'_>> {
         self.contracts.find_first(contract)
     }
 
     /// Removes the _first_ contract with the given name from the set
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{artifacts::*, Project};
-    ///
-    /// let project = Project::builder().build()?;
-    /// let mut output = project.compile()?.into_output();
-    /// let contract = output.remove_first("Greeter").unwrap();
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
     pub fn remove_first(&mut self, contract: impl AsRef<str>) -> Option<Contract> {
         self.contracts.remove_first(contract)
     }
 
     /// Removes the contract with matching path and name
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{artifacts::*, Project};
-    ///
-    /// let project = Project::builder().build()?;
-    /// let mut output = project.compile()?.into_output();
-    /// let contract = output.remove("src/Greeter.sol", "Greeter").unwrap();
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
     pub fn remove(&mut self, path: impl AsRef<str>, contract: impl AsRef<str>) -> Option<Contract> {
         self.contracts.remove(path, contract)
     }
@@ -321,18 +344,6 @@ impl AggregatedCompilerOutput {
     ///
     /// If the `path` segment is `None`, then the first matching `Contract` is returned, see
     /// [Self::remove_first]
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{artifacts::*, info::ContractInfo, Project};
-    ///
-    /// let project = Project::builder().build()?;
-    /// let mut output = project.compile()?.into_output();
-    /// let info = ContractInfo::new("src/Greeter.sol:Greeter");
-    /// let contract = output.remove_contract(&info).unwrap();
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
     pub fn remove_contract<'a>(
         &mut self,
         info: impl Into<ContractInfoRef<'a>>,

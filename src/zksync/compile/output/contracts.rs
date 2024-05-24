@@ -107,17 +107,6 @@ impl VersionedContracts {
     }
 
     /// Finds the contract with matching path and name
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{artifacts::*, Project};
-    ///
-    /// let project = Project::builder().build()?;
-    /// let output = project.compile()?.into_output();
-    /// let contract = output.contracts.find("src/Greeter.sol", "Greeter").unwrap();
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
     pub fn find(
         &self,
         path: impl AsRef<str>,
@@ -132,17 +121,6 @@ impl VersionedContracts {
     }
 
     /// Removes the _first_ contract with the given name from the set
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{artifacts::*, Project};
-    ///
-    /// let project = Project::builder().build()?;
-    /// let (_, mut contracts) = project.compile()?.into_output().split();
-    /// let contract = contracts.remove_first("Greeter").unwrap();
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
     pub fn remove_first(&mut self, contract: impl AsRef<str>) -> Option<Contract> {
         let contract_name = contract.as_ref();
         self.0.values_mut().find_map(|all_contracts| {
@@ -160,17 +138,6 @@ impl VersionedContracts {
     }
 
     ///  Removes the contract with matching path and name
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{artifacts::*, Project};
-    ///
-    /// let project = Project::builder().build()?;
-    /// let (_, mut contracts) = project.compile()?.into_output().split();
-    /// let contract = contracts.remove("src/Greeter.sol", "Greeter").unwrap();
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
     pub fn remove(&mut self, path: impl AsRef<str>, contract: impl AsRef<str>) -> Option<Contract> {
         let contract_name = contract.as_ref();
         let (key, mut all_contracts) = self.0.remove_entry(path.as_ref())?;
