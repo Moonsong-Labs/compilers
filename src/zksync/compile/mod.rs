@@ -8,12 +8,13 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
-    os::unix::prelude::PermissionsExt,
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
     str::FromStr,
 };
 
+#[cfg(feature = "async")]
+use std::os::unix::prelude::PermissionsExt;
 #[cfg(feature = "async")]
 use tokio::{
     fs::{create_dir_all, set_permissions, File},
@@ -52,6 +53,7 @@ impl ZkSolcOS {
         }
     }
 
+    #[cfg(feature = "async")]
     fn get_download_uri(&self) -> &str {
         match self {
             ZkSolcOS::Linux => "linux-amd64-musl",
