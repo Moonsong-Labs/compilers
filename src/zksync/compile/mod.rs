@@ -224,6 +224,28 @@ impl ZkSolc {
         let output = child.wait_with_output().map_err(self.map_io_err())?;
         debug!(%output.status, output.stderr = ?String::from_utf8_lossy(&output.stderr), "finished");
 
+        let missing_libs_error: &[u8] = b"not found in the project".as_slice();
+
+        let output = if !output.status.success()
+            && output
+                .stderr
+                .windows(missing_libs_error.len())
+                .any(|window| window == missing_libs_error)
+        {
+            trace!("Running compiler with missing libraries detection");
+            cmd.arg("--detect-missing-libraries");
+            let mut child = cmd.spawn().map_err(self.map_io_err())?;
+            debug!("spawned");
+            let stdin = child.stdin.as_mut().unwrap();
+            serde_json::to_writer(stdin, input)?;
+            debug!("wrote JSON input to stdin");
+
+            debug!(%output.status, output.stderr = ?String::from_utf8_lossy(&output.stderr), "finished");
+            child.wait_with_output().map_err(self.map_io_err())?
+        } else {
+            output
+        };
+
         compile_output(output)
     }
 
