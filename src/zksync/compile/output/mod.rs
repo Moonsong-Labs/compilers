@@ -188,6 +188,8 @@ pub struct AggregatedCompilerOutput {
     pub contracts: VersionedContracts,
     // All the `BuildInfo`s of solc invocations.
     //pub build_infos: BTreeMap<Version, RawBuildInfo>,
+    /// Whether some compilation triggered recompiling with --detect-missing-libraries setting
+    pub recompiled_with_detect_missing_libraries: bool,
 }
 
 impl AggregatedCompilerOutput {

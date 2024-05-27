@@ -224,7 +224,11 @@ impl<'a, T: ArtifactOutput> ArtifactsState<'a, T> {
         let compiler_severity_filter = project.compiler_severity_filter;
         let has_error =
             output.has_error(&ignored_error_codes, &ignored_file_paths, &compiler_severity_filter);
-        let skip_write_to_disk = project.no_artifacts || has_error;
+        // TODO: We do not write cache that was recompiled with --detect-missing-libraries as
+        // settings won't match the project's zksolc settings. Ideally we would update the
+        // corresponding cache entries adding that setting
+        let skip_write_to_disk =
+            project.no_artifacts || has_error || output.recompiled_with_detect_missing_libraries;
         trace!(has_error, project.no_artifacts, skip_write_to_disk, cache_path=?project.cache_path(),"prepare writing cache file");
 
         let cached_artifacts = cache.consume(&compiled_artifacts, !skip_write_to_disk)?;
@@ -422,7 +426,10 @@ fn compile_sequential(
             // TODO: Implement reports when incorporating the compiler abstaction PR: https://github.com/foundry-rs/compilers/pull/115
             //let start = Instant::now();
             //report::solc_spawn(&zksolc, &version, &input, &actually_dirty);
-            let output = zksolc_with_solc.compile(&input)?;
+            let (output, recompiled_with_missing_libraries) = zksolc_with_solc.compile(&input)?;
+            if recompiled_with_missing_libraries {
+                aggregated.recompiled_with_detect_missing_libraries = true;
+            }
             //report::solc_success(&zksolc, &version, &output, &start.elapsed());
             trace!("compiled input, output has error: {}", output.has_error());
             trace!("received compiler output: {:?}", output.contracts.keys());

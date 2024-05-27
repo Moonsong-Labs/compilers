@@ -160,7 +160,7 @@ impl ZkSolc {
         let path = path.as_ref();
         let mut res: CompilerOutput = Default::default();
         for input in CompilerInput::new(path)? {
-            let output = self.compile(&input)?;
+            let (output, _) = self.compile(&input)?;
             res.merge(output)
         }
         Ok(res)
@@ -172,25 +172,26 @@ impl ZkSolc {
     /// In other words, this removes those files from the `CompilerOutput` that are __not__ included
     /// in the provided `CompilerInput`.
     pub fn compile_exact(&self, input: &CompilerInput) -> Result<CompilerOutput> {
-        let mut out = self.compile(input)?;
+        let (mut out, _) = self.compile(input)?;
         out.retain_files(input.sources.keys().filter_map(|p| p.to_str()));
         Ok(out)
     }
 
     /// Compiles with `--standard-json` and deserializes the output as [`CompilerOutput`].
-    pub fn compile(&self, input: &CompilerInput) -> Result<CompilerOutput> {
-        let output = self.compile_output(input)?;
+    pub fn compile(&self, input: &CompilerInput) -> Result<(CompilerOutput, bool)> {
+        let (output, recompiled_with_dml) = self.compile_output(input)?;
 
         // Only run UTF-8 validation once.
         let output = std::str::from_utf8(&output).map_err(|_| SolcError::InvalidUtf8)?;
 
-        Ok(serde_json::from_str(output)?)
+        Ok((serde_json::from_str(output)?, recompiled_with_dml))
     }
 
     /// Compiles with `--standard-json` and returns the raw `stdout` output.
     #[instrument(name = "compile", level = "debug", skip_all)]
-    pub fn compile_output(&self, input: &CompilerInput) -> Result<Vec<u8>> {
+    pub fn compile_output(&self, input: &CompilerInput) -> Result<(Vec<u8>, bool)> {
         let mut cmd = Command::new(&self.zksolc);
+        let mut recompiled_with_dml = false;
         if let Some(base_path) = &self.base_path {
             cmd.current_dir(base_path);
             cmd.arg("--base-path").arg(base_path);
@@ -232,7 +233,8 @@ impl ZkSolc {
                 .windows(missing_libs_error.len())
                 .any(|window| window == missing_libs_error)
         {
-            trace!("Running compiler with missing libraries detection");
+            trace!("Re-Running compiler with missing libraries detection");
+            recompiled_with_dml = true;
             cmd.arg("--detect-missing-libraries");
             let mut child = cmd.spawn().map_err(self.map_io_err())?;
             debug!("spawned");
@@ -246,7 +248,7 @@ impl ZkSolc {
             output
         };
 
-        compile_output(output)
+        compile_output(output, recompiled_with_dml)
     }
 
     /// Invokes `zksolc --version` and parses the output as a SemVer [`Version`], stripping the
@@ -367,9 +369,9 @@ impl ZkSolc {
     }
 }
 
-fn compile_output(output: Output) -> Result<Vec<u8>> {
+fn compile_output(output: Output, recompiled_with_dml: bool) -> Result<(Vec<u8>, bool)> {
     if output.status.success() {
-        Ok(output.stdout)
+        Ok((output.stdout, recompiled_with_dml))
     } else {
         Err(SolcError::solc_output(&output))
     }
@@ -425,8 +427,9 @@ mod tests {
     fn zksolc_compile_works() {
         let input = include_str!("../../../test-data/zksync/in/compiler-in-1.json");
         let input: CompilerInput = serde_json::from_str(input).unwrap();
-        let out = zksolc().compile(&input).unwrap();
+        let (out, rdml) = zksolc().compile(&input).unwrap();
         assert!(!out.has_error());
+        assert!(!rdml);
     }
 
     #[test]
@@ -435,11 +438,12 @@ mod tests {
             "../../../test-data/zksync/library-remapping-in.json"
         ))
         .unwrap();
-        let out = zksolc().compile(&input).unwrap();
+        let (out, rdml) = zksolc().compile(&input).unwrap();
         let (_, mut contracts) = out.split();
         let contract = contracts.remove("LinkTest").unwrap();
         let bytecode = &contract.get_bytecode().unwrap().object;
         assert!(!bytecode.is_unlinked());
+        assert!(!rdml);
     }
 
     #[test]
@@ -448,10 +452,11 @@ mod tests {
             "../../../test-data/zksync/library-remapping-in-2.json"
         ))
         .unwrap();
-        let out = zksolc().compile(&input).unwrap();
+        let (out, rdml) = zksolc().compile(&input).unwrap();
         let (_, mut contracts) = out.split();
         let contract = contracts.remove("LinkTest").unwrap();
         let bytecode = &contract.get_bytecode().unwrap().object;
         assert!(!bytecode.is_unlinked());
+        assert!(!rdml);
     }
 }
