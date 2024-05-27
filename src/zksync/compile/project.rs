@@ -18,9 +18,9 @@ use crate::{
 };
 use std::{collections::BTreeMap, path::PathBuf};
 
+/// NOTE(We need the root ArtifactOutput because of the Project type
+/// but we are not using to compile anything zksync related)
 #[derive(Debug)]
-// NOTE(We need the root ArtifactOutput because of the Project type
-// but we are not using to compile anything zksync related)
 pub struct ProjectCompiler<'a, T: ArtifactOutput> {
     /// Contains the relationship of the source files and their imports
     edges: GraphEdges,
