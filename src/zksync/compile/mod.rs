@@ -449,7 +449,6 @@ mod tests {
         ))
         .unwrap();
         let out = zksolc().compile(&input).unwrap();
-        println!("{:?}", out);
         let (_, mut contracts) = out.split();
         let contract = contracts.remove("LinkTest").unwrap();
         let bytecode = &contract.get_bytecode().unwrap().object;

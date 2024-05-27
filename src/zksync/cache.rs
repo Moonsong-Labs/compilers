@@ -94,18 +94,6 @@ impl SolFilesCache {
     ///
     /// This expects the `artifact` files to be relative to the artifacts dir of the `paths` and the
     /// `CachEntry` paths to be relative to the root dir of the `paths`
-    ///
-    ///
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{cache::SolFilesCache, Project};
-    ///
-    /// let project = Project::builder().build()?;
-    /// let cache = SolFilesCache::read_joined(&project.paths)?;
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
     pub fn read_joined(paths: &ProjectPathsConfig) -> Result<Self> {
         let mut cache = SolFilesCache::read(&paths.zksync_cache)?;
         cache.join_entries(&paths.root).join_artifacts_files(&paths.zksync_artifacts);

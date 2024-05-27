@@ -299,31 +299,6 @@ impl AggregatedCompilerOutput {
         }
     }
 
-    /*
-    /// Creates all `BuildInfo` files in the given `build_info_dir`
-    ///
-    /// There can be multiple `BuildInfo`, since we support multiple versions.
-    ///
-    /// The created files have the md5 hash `{_format,solcVersion,solcLongVersion,input}` as their
-    /// file name
-    pub fn write_build_infos(&self, build_info_dir: impl AsRef<Path>) -> Result<(), SolcIoError> {
-        if self.build_infos.is_empty() {
-            return Ok(());
-        }
-        let build_info_dir = build_info_dir.as_ref();
-        std::fs::create_dir_all(build_info_dir)
-            .map_err(|err| SolcIoError::new(err, build_info_dir))?;
-        for (version, build_info) in &self.build_infos {
-            trace!("writing build info file for solc {}", version);
-            let file_name = format!("{}.json", build_info.id);
-            let file = build_info_dir.join(file_name);
-            std::fs::write(&file, &build_info.build_info)
-                .map_err(|err| SolcIoError::new(err, file))?;
-        }
-        Ok(())
-    }
-    */
-
     /// Finds the _first_ contract with the given name
     pub fn find_first(&self, contract: impl AsRef<str>) -> Option<CompactContractRef<'_>> {
         self.contracts.find_first(contract)
@@ -394,17 +369,6 @@ impl AggregatedCompilerOutput {
 
     /// Given the contract file's path and the contract's name, tries to return the contract's
     /// bytecode, runtime bytecode, and ABI.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{artifacts::*, Project};
-    ///
-    /// let project = Project::builder().build()?;
-    /// let output = project.compile()?.into_output();
-    /// let contract = output.get("src/Greeter.sol", "Greeter").unwrap();
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
     pub fn get(
         &self,
         path: impl AsRef<str>,
@@ -415,17 +379,6 @@ impl AggregatedCompilerOutput {
 
     /// Returns the output's source files and contracts separately, wrapped in helper types that
     /// provide several helper methods
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::Project;
-    ///
-    /// let project = Project::builder().build()?;
-    /// let output = project.compile()?.into_output();
-    /// let (sources, contracts) = output.split();
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
     pub fn split(self) -> (VersionedSourceFiles, VersionedContracts) {
         (self.sources, self.contracts)
     }
@@ -442,18 +395,6 @@ impl AggregatedCompilerOutput {
     /// `base` argument.
     ///
     /// Convenience method for [Self::strip_prefix_all()] that consumes the type.
-    ///
-    /// # Examples
-    ///
-    /// Make all sources and contracts relative to the project's root directory
-    ///
-    /// ```no_run
-    /// use foundry_compilers::Project;
-    ///
-    /// let project = Project::builder().build()?;
-    /// let output = project.compile()?.into_output().with_stripped_file_prefixes(project.root());
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
     pub fn with_stripped_file_prefixes(mut self, base: impl AsRef<Path>) -> Self {
         let base = base.as_ref();
         self.contracts.strip_prefix_all(base);

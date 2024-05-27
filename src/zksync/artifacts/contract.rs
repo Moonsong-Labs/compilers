@@ -99,47 +99,6 @@ impl CompactContract {
             self.bin.and_then(|bin| bin.into_bytes()).unwrap_or_default(),
         )
     }
-    /* TODO: See if we implement this api
-
-
-    /// Unwraps `self` into `CompactContractSome`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if any field is `None`.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{artifacts::*, Project};
-    ///
-    /// let project = Project::builder().build()?;
-    /// let mut output = project.compile()?.into_output();
-    /// let contract: CompactContract = output.remove_first("Greeter").unwrap().into();
-    /// let contract: CompactContractSome = contract.unwrap();
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
-    #[track_caller]
-    pub fn unwrap(self) -> CompactContractSome {
-        CompactContractSome {
-            abi: self.abi.unwrap(),
-            bin: self.bin.unwrap(),
-            bin_runtime: self.bin_runtime.unwrap(),
-        }
-    }
-
-    /// Returns the `CompactContractSome` if any if the field equals `None` the `Default` value is
-    /// returned
-    ///
-    /// Unlike `unwrap`, this function does _not_ panic
-    pub fn unwrap_or_default(self) -> CompactContractSome {
-        CompactContractSome {
-            abi: self.abi.unwrap_or_default(),
-            bin: self.bin.unwrap_or_default(),
-            bin_runtime: self.bin_runtime.unwrap_or_default(),
-        }
-    }
-    */
 }
 
 impl<'a> From<CompactContractRef<'a>> for CompactContract {
