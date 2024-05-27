@@ -22,6 +22,7 @@ use std::{
 pub mod multi;
 pub mod solc;
 pub mod vyper;
+pub mod zksolc;
 pub use vyper::*;
 
 mod restrictions;

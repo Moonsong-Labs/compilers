@@ -15,6 +15,7 @@ use foundry_compilers_core::{
     error::{Result, SolcError, SolcIoError},
     utils::{self, strip_prefix_owned},
 };
+
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet,
@@ -262,7 +263,6 @@ impl<L> ProjectPathsConfig<L> {
             libraries: self.libraries.iter().cloned().collect(),
         }
     }
-
     /// Same as [`paths`][ProjectPathsConfig::paths] but strips the `root` form all paths.
     ///
     /// See: [`ProjectPaths::strip_prefix_all`]
@@ -271,7 +271,6 @@ impl<L> ProjectPathsConfig<L> {
         paths.strip_prefix_all(&self.root);
         paths
     }
-
     /// Creates all configured dirs and files
     pub fn create_all(&self) -> std::result::Result<(), SolcIoError> {
         if let Some(parent) = self.cache.parent() {

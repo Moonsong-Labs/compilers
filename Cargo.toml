@@ -64,3 +64,7 @@ futures-util = "0.3"
 tokio = { version = "1.35", features = ["rt-multi-thread"] }
 
 snapbox = "0.6.9"
+
+# zksync
+foundry-compilers-artifacts-zksolc = { path = "crates/artifacts/zksolc", version = "0.11.1" }
+globset = "0.4"
