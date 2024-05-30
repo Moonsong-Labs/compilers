@@ -1,57 +1,93 @@
 use crate::{
     artifact_output::{ArtifactOutput, Artifacts},
     artifacts::{VersionedFilteredSources, VersionedSources},
+    compilers::{CompilerInput, CompilerVersionManager},
     config::ProjectPathsConfig,
     error::Result,
     filter::SparseOutputFilter,
-    resolver::GraphEdges,
+    report,
+    resolver::{parse::SolData, GraphEdges},
     zksync::{
         artifact_output::zk::ZkContractArtifact,
-        artifacts::{CompilerInput, Settings},
         cache::ArtifactsCache,
-        compile::{
-            output::{AggregatedCompilerOutput, ProjectCompileOutput},
-            ZkSolc,
-        },
+        compile::output::{AggregatedCompilerOutput, ProjectCompileOutput},
+        compilers::zksolc::{input::ZkSolcInput, settings::ZkSolcSettings, ZkSolc},
     },
-    Graph, Project, Solc, Sources,
+    Compiler, CompilerConfig, Graph, Project, Solc, Source, Sources,
 };
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{path::PathBuf, time::Instant};
 
 /// NOTE(We need the root ArtifactOutput because of the Project type
 /// but we are not using to compile anything zksync related)
 #[derive(Debug)]
 pub struct ProjectCompiler<'a, T: ArtifactOutput> {
     /// Contains the relationship of the source files and their imports
-    edges: GraphEdges,
-    project: &'a Project<T>,
+    edges: GraphEdges<SolData>,
+    project: &'a Project<Solc, T>,
     /// how to compile all the sources
     sources: CompilerSources,
     /// How to select zksolc [`crate::zksync::artifacts::CompilerOutput`] for files
-    sparse_output: SparseOutputFilter,
+    sparse_output: SparseOutputFilter<SolData>,
 }
 
 impl<'a, T: ArtifactOutput> ProjectCompiler<'a, T> {
+    /// Create a new `ProjectCompiler` to bootstrap the compilation process of the project's
+    /// sources.
+    pub fn new(project: &'a Project<Solc, T>) -> Result<Self> {
+        let sources = match project.zksync_avoid_contracts {
+            Some(ref contracts_to_avoid) => Source::read_all(
+                project
+                    .paths
+                    .input_files()
+                    .into_iter()
+                    .filter(|p| !contracts_to_avoid.iter().any(|c| c.is_match(p))),
+            )?,
+            None => project.paths.read_input_files()?,
+        };
+        Self::with_sources(project, sources)
+    }
+
+    /// Bootstraps the compilation process by resolving the dependency graph of all sources and the
+    /// appropriate `Solc` -> `Sources` set as well as the compile mode to use (parallel,
+    /// sequential)
+    ///
+    /// Multiple (`Solc` -> `Sources`) pairs can be compiled in parallel if the `Project` allows
+    /// multiple `jobs`, see [`crate::Project::set_solc_jobs()`].
+    pub fn with_sources(project: &'a Project<Solc, T>, sources: Sources) -> Result<Self> {
+        match &project.compiler_config {
+            CompilerConfig::<Solc>::Specific(compiler) => {
+                Self::with_sources_and_solc(project, sources, compiler.clone())
+            }
+            CompilerConfig::<Solc>::AutoDetect(vm) => {
+                Self::with_sources_and_version_manager(project, sources, vm.clone())
+            }
+        }
+    }
+
     /// Compiles the sources with a pinned `ZkSolc` instance
     pub fn with_sources_and_solc(
-        project: &'a Project<T>,
+        project: &'a Project<Solc, T>,
         sources: Sources,
         solc: Solc,
     ) -> Result<Self> {
-        let solc_version = solc.version()?;
+        let solc_version = solc.version().clone();
         let (sources, edges) = Graph::resolve_sources(&project.paths, sources)?.into_sources();
 
-        let sources_by_version = BTreeMap::from([(solc, (solc_version, sources))]);
+        let sources_by_version = vec![(solc, solc_version.clone(), sources)];
         let sources = CompilerSources::Sequential(sources_by_version);
 
         Ok(Self { edges, project, sources, sparse_output: Default::default() })
     }
-    #[cfg(feature = "svm-solc")]
-    pub fn with_sources(project: &'a Project<T>, sources: Sources) -> Result<Self> {
-        let graph = Graph::resolve_sources(&project.paths, sources)?;
-        let (versions, edges) = graph.into_sources_by_version(project.offline)?;
 
-        let sources_by_version = versions.get(project)?;
+    pub fn with_sources_and_version_manager<VM: CompilerVersionManager<Compiler = Solc>>(
+        project: &'a Project<Solc, T>,
+        sources: Sources,
+        version_manager: VM,
+    ) -> Result<Self> {
+        let graph = Graph::resolve_sources(&project.paths, sources)?;
+        let (versions, edges) = graph.into_sources_by_version(project.offline, &version_manager)?;
+
+        let sources_by_version = versions.get(&version_manager)?;
 
         /* TODO: Evaluate parallel support
         let sources = if project.solc_jobs > 1 && sources_by_version.len() > 1 {
@@ -111,7 +147,7 @@ struct PreprocessedState<'a, T: ArtifactOutput> {
     /// Cache that holds `CacheEntry` objects if caching is enabled and the project is recompiled
     cache: ArtifactsCache<'a, T>,
 
-    sparse_output: SparseOutputFilter,
+    sparse_output: SparseOutputFilter<SolData>,
 }
 
 impl<'a, T: ArtifactOutput> PreprocessedState<'a, T> {
@@ -247,14 +283,14 @@ impl<'a, T: ArtifactOutput> ArtifactsState<'a, T> {
 #[derive(Debug, Clone)]
 enum CompilerSources {
     /// Compile all these sequentially
-    Sequential(VersionedSources),
+    Sequential(VersionedSources<Solc>),
 }
 
 impl CompilerSources {
     /// Converts all `\\` separators to `/`
     ///
     /// This effectively ensures that `solc` can find imported files like `/src/Cheats.sol` in the
-    /// VFS (the `CompilerInput` as json) under `src/Cheats.sol`.
+    /// VFS (the `ZkSolcInput` as json) under `src/Cheats.sol`.
     fn slash_paths(&mut self) {
         #[cfg(windows)]
         {
@@ -283,25 +319,22 @@ impl CompilerSources {
         cache: &mut ArtifactsCache<'_, T>,
     ) -> FilteredCompilerSources {
         fn filtered_sources<T: ArtifactOutput>(
-            sources: VersionedSources,
+            sources: VersionedSources<Solc>,
             cache: &mut ArtifactsCache<'_, T>,
-        ) -> VersionedFilteredSources {
-            // fill all content hashes first so they're available for all source sets
-            sources.iter().for_each(|(_, (_, sources))| {
-                cache.fill_content_hashes(sources);
-            });
+        ) -> VersionedFilteredSources<Solc> {
+            cache.remove_dirty_sources();
 
             sources
                 .into_iter()
-                .map(|(zksolc, (version, sources))| {
+                .map(|(solc, version, sources)| {
                     trace!("Filtering {} sources for {}", sources.len(), version);
-                    let sources = cache.filter(sources, &version);
+                    let sources_to_compile = cache.filter(sources, &version);
                     trace!(
-                        "Detected {} dirty sources {:?}",
-                        sources.dirty().count(),
-                        sources.dirty_files().collect::<Vec<_>>()
+                        "Detected {} sources to compile {:?}",
+                        sources_to_compile.dirty().count(),
+                        sources_to_compile.dirty_files().collect::<Vec<_>>()
                     );
-                    (zksolc, (version, sources))
+                    (solc, version, sources_to_compile)
                 })
                 .collect()
         }
@@ -318,7 +351,7 @@ impl CompilerSources {
 #[derive(Debug, Clone)]
 enum FilteredCompilerSources {
     /// Compile all these sequentially
-    Sequential(VersionedFilteredSources),
+    Sequential(VersionedFilteredSources<Solc>),
 }
 
 impl FilteredCompilerSources {
@@ -326,10 +359,10 @@ impl FilteredCompilerSources {
     fn compile(
         self,
         zksolc: &ZkSolc,
-        settings: &Settings,
+        settings: &ZkSolcSettings,
         paths: &ProjectPathsConfig,
-        sparse_output: SparseOutputFilter,
-        graph: &GraphEdges,
+        sparse_output: SparseOutputFilter<SolData>,
+        graph: &GraphEdges<SolData>,
         create_build_info: bool,
     ) -> Result<AggregatedCompilerOutput> {
         match self {
@@ -344,41 +377,44 @@ impl FilteredCompilerSources {
             ),
         }
     }
-
-    #[cfg(test)]
-    #[cfg(all(feature = "project-util", feature = "svm-solc"))]
-    fn sources(&self) -> &VersionedFilteredSources {
-        match self {
-            FilteredCompilerSources::Sequential(v) => v,
-        }
-    }
 }
 
 /// Compiles the input set sequentially and returns an aggregated set of the solc `CompilerOutput`s
 fn compile_sequential(
-    input: VersionedFilteredSources,
+    input: VersionedFilteredSources<Solc>,
     zksolc: &ZkSolc,
-    settings: &Settings,
+    settings: &ZkSolcSettings,
     paths: &ProjectPathsConfig,
-    _sparse_output: SparseOutputFilter,
-    _graph: &GraphEdges,
+    _sparse_output: SparseOutputFilter<SolData>,
+    graph: &GraphEdges<SolData>,
     _create_build_info: bool,
 ) -> Result<AggregatedCompilerOutput> {
     let mut aggregated = AggregatedCompilerOutput::default();
     trace!("compiling {} jobs sequentially", input.len());
-    for (solc, (version, filtered_sources)) in input {
-        let zksolc_with_solc = ZkSolc::from_template_and_solc(zksolc, solc)?;
+
+    // Include additional paths collected during graph resolution.
+    let mut include_paths = paths.include_paths.clone();
+    include_paths.extend(graph.include_paths().clone());
+
+    for (solc, version, filtered_sources) in input {
         if filtered_sources.is_empty() {
             // nothing to compile
             trace!("skip zksolc {} {} for empty sources set", zksolc.as_ref().display(), version);
             continue;
         }
+
         trace!(
-            "compiling {} sources with solc \"{}\" {:?}",
+            "compiling {} sources with zksolc and solc\"{}\"",
             filtered_sources.len(),
-            zksolc_with_solc.as_ref().display(),
-            zksolc_with_solc.args
+            solc.version
         );
+
+        let solc = solc
+            .with_base_path(paths.root.clone())
+            .with_allowed_paths(paths.allowed_paths.clone())
+            .with_include_paths(include_paths.clone());
+
+        let zksolc_with_solc = ZkSolc::from_template_and_solc(zksolc, solc)?;
 
         let dirty_files: Vec<PathBuf> = filtered_sources.dirty_files().cloned().collect();
 
@@ -391,7 +427,7 @@ fn compile_sequential(
         //let sources = sparse_output.sparse_sources(filtered_sources, &mut opt_settings, graph);
         let sources: Sources = filtered_sources.into();
 
-        for input in CompilerInput::with_sources(sources) {
+        for input in ZkSolcInput::build(sources, opt_settings, &version) {
             let actually_dirty = input
                 .sources
                 .keys()
@@ -409,28 +445,29 @@ fn compile_sequential(
                 );
                 continue;
             }
-            let input = input
-                .settings(opt_settings.clone())
-                .normalize_evm_version(&version)
-                .with_remappings(paths.remappings.clone())
-                .with_base_path(&paths.root);
-            //.sanitized(&version); TODO: evaluate sanitizing input depending on version
-
             trace!(
-                "calling zksolc `{}` with {} sources {:?}",
+                "calling zksolc with solc `{}` with {} sources {:?}",
                 version,
                 input.sources.len(),
                 input.sources.keys()
             );
+            let mut input = input.with_remappings(paths.remappings.clone());
+            input.strip_prefix(paths.root.as_path());
+            //.sanitized(&version); TODO: evaluate sanitizing input depending on version
 
-            // TODO: Implement reports when incorporating the compiler abstaction PR: https://github.com/foundry-rs/compilers/pull/115
-            //let start = Instant::now();
-            //report::solc_spawn(&zksolc, &version, &input, &actually_dirty);
-            let (output, recompiled_with_missing_libraries) = zksolc_with_solc.compile(&input)?;
+            let zksolc_version = zksolc_with_solc.version()?;
+            let start = Instant::now();
+            report::compiler_spawn(
+                &input.compiler_name(),
+                &zksolc_version,
+                actually_dirty.as_slice(),
+            );
+            let (mut output, recompiled_with_missing_libraries) =
+                zksolc_with_solc.compile(&input)?;
             if recompiled_with_missing_libraries {
                 aggregated.recompiled_with_detect_missing_libraries = true;
             }
-            //report::solc_success(&zksolc, &version, &output, &start.elapsed());
+            report::compiler_success(&input.compiler_name(), &zksolc_version, &start.elapsed());
             trace!("compiled input, output has error: {}", output.has_error());
             trace!("received compiler output: {:?}", output.contracts.keys());
 
@@ -441,6 +478,7 @@ fn compile_sequential(
                 aggregated.build_infos.insert(version.clone(), build_info);
             }
             */
+            output.join_all(paths.root.as_path());
 
             aggregated.extend(version.clone(), output);
         }

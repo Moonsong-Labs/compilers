@@ -2,7 +2,7 @@ use crate::{
     artifacts::{serde_helpers, EvmVersion, Libraries},
     compilers::CompilerSettings,
     remappings::Remapping,
-    zksync::artifacts::output_selection::OutputSelection,
+    zksync::artifacts::output_selection::OutputSelection as ZkOutputSelection,
 };
 use serde::{Deserialize, Serialize};
 use std::{fmt, path::Path, str::FromStr};
@@ -34,7 +34,7 @@ pub struct ZkSolcSettings {
     /// If this field is omitted, then the compiler loads and does type
     /// checking, but will not generate any outputs apart from errors.
     #[serde(default)]
-    pub output_selection: OutputSelection,
+    pub output_selection: ZkOutputSelection,
 
     pub optimizer: Optimizer,
     /// Metadata settings
@@ -58,8 +58,20 @@ pub struct ZkSolcSettings {
 
 impl ZkSolcSettings {
     /// Creates a new `Settings` instance with the given `output_selection`
-    pub fn new(output_selection: impl Into<OutputSelection>) -> Self {
+    pub fn new(output_selection: impl Into<ZkOutputSelection>) -> Self {
         Self { output_selection: output_selection.into(), ..Default::default() }
+    }
+
+    pub fn strip_prefix(&mut self, base: impl AsRef<Path>) {
+        let base = base.as_ref();
+        self.remappings.iter_mut().for_each(|r| {
+            r.strip_prefix(base);
+        });
+
+        self.libraries.libs = std::mem::take(&mut self.libraries.libs)
+            .into_iter()
+            .map(|(file, libs)| (file.strip_prefix(base).map(Into::into).unwrap_or(file), libs))
+            .collect();
     }
 
     /// Strips `base` from all paths
@@ -98,7 +110,7 @@ impl Default for ZkSolcSettings {
 }
 
 impl CompilerSettings for ZkSolcSettings {
-    fn output_selection_mut(&mut self) -> &mut OutputSelection {
+    fn output_selection_mut(&mut self) -> &mut crate::OutputSelection {
         panic!("ouptut_selection_mut not implemented for zksolc")
     }
 

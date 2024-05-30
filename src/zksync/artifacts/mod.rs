@@ -1,7 +1,10 @@
 use crate::artifacts::{FileToContractsMap, SourceFile, SourceFiles};
 
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashSet},
+    path::{Path, PathBuf},
+};
 
 pub mod bytecode;
 pub mod contract;
@@ -22,7 +25,7 @@ pub struct CompilerOutput {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub errors: Vec<Error>,
     #[serde(default)]
-    pub sources: BTreeMap<String, SourceFile>,
+    pub sources: BTreeMap<PathBuf, SourceFile>,
     #[serde(default)]
     pub contracts: FileToContractsMap<Contract>,
     /// The `solc` compiler version.
@@ -42,18 +45,25 @@ impl CompilerOutput {
         self.errors.iter().any(|err| err.severity.is_error())
     }
 
+    /// Returns the output's source files and contracts separately, wrapped in helper types that
+    /// provide several helper methods
+    pub fn split(self) -> (SourceFiles, OutputContracts) {
+        (SourceFiles(self.sources), OutputContracts(self.contracts))
+    }
+
     /// Retains only those files the given iterator yields
     ///
     /// In other words, removes all contracts for files not included in the iterator
     pub fn retain_files<'a, I>(&mut self, files: I)
     where
-        I: IntoIterator<Item = &'a str>,
+        I: IntoIterator<Item = &'a Path>,
     {
-        // Note: use `to_lowercase` here because zksolc not necessarily emits the exact file name,
+        // Note: use `to_lowercase` here because solc not necessarily emits the exact file name,
         // e.g. `src/utils/upgradeProxy.sol` is emitted as `src/utils/UpgradeProxy.sol`
-        let files: HashSet<_> = files.into_iter().map(|s| s.to_lowercase()).collect();
-        self.contracts.retain(|f, _| files.contains(f.to_lowercase().as_str()));
-        self.sources.retain(|f, _| files.contains(f.to_lowercase().as_str()));
+        let files: HashSet<_> =
+            files.into_iter().map(|s| s.to_string_lossy().to_lowercase()).collect();
+        self.contracts.retain(|f, _| files.contains(&f.to_string_lossy().to_lowercase()));
+        self.sources.retain(|f, _| files.contains(&f.to_string_lossy().to_lowercase()));
     }
 
     pub fn merge(&mut self, other: CompilerOutput) {
@@ -62,10 +72,16 @@ impl CompilerOutput {
         self.sources.extend(other.sources);
     }
 
-    /// Returns the output's source files and contracts separately, wrapped in helper types that
-    /// provide several helper methods
-    pub fn split(self) -> (SourceFiles, OutputContracts) {
-        (SourceFiles(self.sources), OutputContracts(self.contracts))
+    pub fn join_all(&mut self, root: impl AsRef<Path>) {
+        let root = root.as_ref();
+        self.contracts = std::mem::take(&mut self.contracts)
+            .into_iter()
+            .map(|(path, contracts)| (root.join(path), contracts))
+            .collect();
+        self.sources = std::mem::take(&mut self.sources)
+            .into_iter()
+            .map(|(path, source)| (root.join(path), source))
+            .collect();
     }
 }
 

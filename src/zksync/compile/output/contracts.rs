@@ -1,16 +1,14 @@
 use crate::{
     artifacts::FileToContractsMap,
-    zksync::{
-        artifact_output::{
-            files::{MappedArtifactFile, MappedArtifactFiles, MappedContract},
-            output_file, output_file_versioned, OutputContext,
-        },
-        artifacts::contract::{CompactContractRef, Contract},
-    },
+    zksync::artifacts::contract::{CompactContractRef, Contract},
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, ops::Deref, path::Path};
+use std::{
+    collections::BTreeMap,
+    ops::Deref,
+    path::{Path, PathBuf},
+};
 
 /// file -> [(contract name  -> Contract + solc version)]
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -38,67 +36,11 @@ impl VersionedContracts {
     }
 
     /// Returns an iterator over all files
-    pub fn files(&self) -> impl Iterator<Item = &String> + '_ {
+    pub fn files(&self) -> impl Iterator<Item = &PathBuf> + '_ {
         self.0.keys()
     }
 
-    /// Returns all the artifact files mapped with their contracts
-    ///
-    /// This will compute the appropriate output file paths but will _not_ write them.
-    /// The `ctx` is used to avoid possible conflicts
-    pub(crate) fn artifact_files(&self, ctx: &OutputContext<'_>) -> MappedArtifactFiles<'_> {
-        let mut output_files = MappedArtifactFiles::with_capacity(self.len());
-        for (file, contracts) in self.iter() {
-            for (name, versioned_contracts) in contracts {
-                for contract in versioned_contracts {
-                    // if an artifact for the contract already exists (from a previous compile job)
-                    // we reuse the path, this will make sure that even if there are conflicting
-                    // files (files for witch `T::output_file()` would return the same path) we use
-                    // consistent output paths
-                    let artifact_path = if let Some(existing_artifact) =
-                        ctx.existing_artifact(file, name, &contract.version).cloned()
-                    {
-                        trace!("use existing artifact file {:?}", existing_artifact,);
-                        existing_artifact
-                    } else if versioned_contracts.len() > 1 {
-                        output_file_versioned(file, name, &contract.version)
-                    } else {
-                        output_file(file, name)
-                    };
-
-                    trace!(
-                        "use artifact file {:?} for contract file {} {}",
-                        artifact_path,
-                        file,
-                        contract.version
-                    );
-                    let artifact = MappedArtifactFile::new(&artifact_path);
-                    let contract = MappedContract {
-                        file: file.as_str(),
-                        name: name.as_str(),
-                        contract,
-                        artifact_path,
-                    };
-                    output_files.entry(artifact).or_default().push(contract);
-                }
-            }
-        }
-
-        output_files
-    }
-
     /// Finds the _first_ contract with the given name
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use foundry_compilers::{artifacts::*, Project};
-    ///
-    /// let project = Project::builder().build()?;
-    /// let output = project.compile()?.into_output();
-    /// let contract = output.find_first("Greeter").unwrap();
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
-    /// ```
     pub fn find_first(&self, contract: impl AsRef<str>) -> Option<CompactContractRef<'_>> {
         let contract_name = contract.as_ref();
         self.contracts().find_map(|(name, contract)| {
@@ -109,7 +51,7 @@ impl VersionedContracts {
     /// Finds the contract with matching path and name
     pub fn find(
         &self,
-        path: impl AsRef<str>,
+        path: impl AsRef<Path>,
         contract: impl AsRef<str>,
     ) -> Option<CompactContractRef<'_>> {
         let contract_path = path.as_ref();
@@ -138,7 +80,11 @@ impl VersionedContracts {
     }
 
     ///  Removes the contract with matching path and name
-    pub fn remove(&mut self, path: impl AsRef<str>, contract: impl AsRef<str>) -> Option<Contract> {
+    pub fn remove(
+        &mut self,
+        path: impl AsRef<Path>,
+        contract: impl AsRef<str>,
+    ) -> Option<Contract> {
         let contract_name = contract.as_ref();
         let (key, mut all_contracts) = self.0.remove_entry(path.as_ref())?;
         let mut contract = None;
@@ -161,7 +107,7 @@ impl VersionedContracts {
     /// bytecode, runtime bytecode, and ABI.
     pub fn get(
         &self,
-        path: impl AsRef<str>,
+        path: impl AsRef<Path>,
         contract: impl AsRef<str>,
     ) -> Option<CompactContractRef<'_>> {
         let contract = contract.as_ref();
@@ -181,7 +127,7 @@ impl VersionedContracts {
     }
 
     /// Returns an iterator over (`file`, `name`, `Contract`).
-    pub fn contracts_with_files(&self) -> impl Iterator<Item = (&String, &String, &Contract)> {
+    pub fn contracts_with_files(&self) -> impl Iterator<Item = (&PathBuf, &String, &Contract)> {
         self.0.iter().flat_map(|(file, contracts)| {
             contracts
                 .iter()
@@ -192,7 +138,7 @@ impl VersionedContracts {
     /// Returns an iterator over (`file`, `name`, `Contract`, `Version`).
     pub fn contracts_with_files_and_version(
         &self,
-    ) -> impl Iterator<Item = (&String, &String, &Contract, &Version)> {
+    ) -> impl Iterator<Item = (&PathBuf, &String, &Contract, &Version)> {
         self.0.iter().flat_map(|(file, contracts)| {
             contracts.iter().flat_map(move |(name, c)| {
                 c.iter().map(move |c| (file, name, &c.contract, &c.version))
@@ -209,7 +155,7 @@ impl VersionedContracts {
     }
 
     /// Returns an iterator over (`file`, `name`, `Contract`)
-    pub fn into_contracts_with_files(self) -> impl Iterator<Item = (String, String, Contract)> {
+    pub fn into_contracts_with_files(self) -> impl Iterator<Item = (PathBuf, String, Contract)> {
         self.0.into_iter().flat_map(|(file, contracts)| {
             contracts.into_iter().flat_map(move |(name, c)| {
                 let file = file.clone();
@@ -221,7 +167,7 @@ impl VersionedContracts {
     /// Returns an iterator over (`file`, `name`, `Contract`, `Version`)
     pub fn into_contracts_with_files_and_version(
         self,
-    ) -> impl Iterator<Item = (String, String, Contract, Version)> {
+    ) -> impl Iterator<Item = (PathBuf, String, Contract, Version)> {
         self.0.into_iter().flat_map(|(file, contracts)| {
             contracts.into_iter().flat_map(move |(name, c)| {
                 let file = file.clone();
@@ -235,9 +181,7 @@ impl VersionedContracts {
         let root = root.as_ref();
         self.0 = std::mem::take(&mut self.0)
             .into_iter()
-            .map(|(contract_path, contracts)| {
-                (format!("{}", root.join(contract_path).display()), contracts)
-            })
+            .map(|(contract_path, contracts)| (root.join(contract_path), contracts))
             .collect();
         self
     }
@@ -248,11 +192,8 @@ impl VersionedContracts {
         self.0 = std::mem::take(&mut self.0)
             .into_iter()
             .map(|(contract_path, contracts)| {
-                let p = Path::new(&contract_path);
                 (
-                    p.strip_prefix(base)
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or(contract_path),
+                    contract_path.strip_prefix(base).unwrap_or(&contract_path).to_path_buf(),
                     contracts,
                 )
             })
@@ -282,9 +223,9 @@ impl Deref for VersionedContracts {
 }
 
 impl IntoIterator for VersionedContracts {
-    type Item = (String, BTreeMap<String, Vec<VersionedContract>>);
+    type Item = (PathBuf, BTreeMap<String, Vec<VersionedContract>>);
     type IntoIter =
-        std::collections::btree_map::IntoIter<String, BTreeMap<String, Vec<VersionedContract>>>;
+        std::collections::btree_map::IntoIter<PathBuf, BTreeMap<String, Vec<VersionedContract>>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()

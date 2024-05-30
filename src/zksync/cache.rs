@@ -1,6 +1,7 @@
 //! Support for compiling contracts.
 
 use crate::{
+    artifact_output::OutputContext,
     artifacts::Sources,
     cache::{CacheEntry, CompilerCache, GroupedSources},
     error::Result,
@@ -8,10 +9,10 @@ use crate::{
     resolver::{parse::SolData, GraphEdges},
     utils,
     zksync::{
-        artifact_output::{zk::ZkContractArtifact, OutputContext},
-        config::ZkSolcConfig,
+        self, artifact_output::zk::ZkContractArtifact, compilers::zksolc::settings::ZkSolcSettings,
     },
-    ArtifactOutput, Artifacts, Compiler, Graph, Project, Source,
+    ArtifactOutput, Artifacts, Compiler, CompilerSettings, Graph, Project, ProjectPathsConfig,
+    Solc, Source,
 };
 use semver::Version;
 use std::{
@@ -19,22 +20,31 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// ethers-rs format version
-///
-/// `ethers-solc` uses a different format version id, but the actual format is consistent with
-/// hardhat This allows ethers-solc to detect if the cache file was written by hardhat or
-/// `ethers-solc`
-const ETHERS_FORMAT_VERSION: &str = "ethers-rs-sol-cache-3";
-
 /// The file name of the default cache file
 pub const ZKSYNC_SOLIDITY_FILES_CACHE_FILENAME: &str = "zksync-solidity-files-cache.json";
+
+// OVERRIDES
+// Zksync specific overrides to generalized methods
+// TODO: Most of these are needed because we use dedicated paths for zksync stuff and they live
+// along the general paths in `ProjectPathsConfig`. This is pretty error prone as we need to
+// detect where the paths are used and override with the zksync ones, and they are very easy to
+// miss. A way to solve this would be to delete the zksync specific config and use a dedicated
+// `Project` instead, having helpers to create that Project from the `solc` one.
+/// Override of CompilerCache::read_joined to use zksync paths
+pub fn zksync_override_compiler_cache_read_joined<C: Compiler>(
+    paths: &ProjectPathsConfig<C>,
+) -> Result<CompilerCache<ZkSolcSettings>> {
+    let mut cache = CompilerCache::read(&paths.zksync_cache)?;
+    cache.join_entries(&paths.root).join_artifacts_files(&paths.zksync_artifacts);
+    Ok(cache)
+}
 
 /// A helper abstraction over the [`SolFilesCache`] used to determine what files need to compiled
 /// and which `Artifacts` can be reused.
 #[derive(Debug)]
-pub(crate) struct ArtifactsCacheInner<'a, T: ArtifactOutput, C: Compiler> {
+pub(crate) struct ArtifactsCacheInner<'a, T: ArtifactOutput> {
     /// The preexisting cache file.
-    pub cache: CompilerCache<ZkSolcConfig>,
+    pub cache: CompilerCache<ZkSolcSettings>,
 
     /// All already existing artifacts.
     pub cached_artifacts: Artifacts<ZkContractArtifact>,
@@ -43,7 +53,7 @@ pub(crate) struct ArtifactsCacheInner<'a, T: ArtifactOutput, C: Compiler> {
     pub edges: GraphEdges<SolData>,
 
     /// The project.
-    pub project: &'a Project<C, T>,
+    pub project: &'a Project<Solc, T>,
 
     /// Files that were invalidated and removed from cache.
     /// Those are not grouped by version and purged completely.
@@ -58,7 +68,7 @@ pub(crate) struct ArtifactsCacheInner<'a, T: ArtifactOutput, C: Compiler> {
     pub content_hashes: HashMap<PathBuf, String>,
 }
 
-impl<'a, T: ArtifactOutput, C: Compiler> ArtifactsCacheInner<'a, T, C> {
+impl<'a, T: ArtifactOutput> ArtifactsCacheInner<'a, T> {
     /// Creates a new cache entry for the file
     fn create_cache_entry(&mut self, file: PathBuf, source: &Source) {
         let imports = self
@@ -69,11 +79,13 @@ impl<'a, T: ArtifactOutput, C: Compiler> ArtifactsCacheInner<'a, T, C> {
             .collect();
 
         let entry = CacheEntry {
-            last_modification_date: CacheEntry::<C::Settings>::read_last_modification_date(&file)
-                .unwrap_or_default(),
+            last_modification_date: CacheEntry::<ZkSolcSettings>::read_last_modification_date(
+                &file,
+            )
+            .unwrap_or_default(),
             content_hash: source.content_hash(),
             source_name: utils::source_name(&file, self.project.root()).into(),
-            compiler_settings: self.project.zksync_zksolc_config.clone(),
+            compiler_settings: self.project.zksync_zksolc_config.settings.clone(),
             imports,
             version_requirement: self.edges.version_requirement(&file).map(|v| v.to_string()),
             // artifacts remain empty until we received the compiler output
@@ -204,7 +216,7 @@ impl<'a, T: ArtifactOutput, C: Compiler> ArtifactsCacheInner<'a, T, C> {
 
         // Build a temporary graph for walking imports. We need this because `self.edges`
         // only contains graph data for in-scope sources but we are operating on cache entries.
-        if let Ok(graph) = Graph::<C::ParsedSource>::resolve_sources(&self.project.paths, sources) {
+        if let Ok(graph) = Graph::<SolData>::resolve_sources(&self.project.paths, sources) {
             let (sources, edges) = graph.into_sources();
 
             // Calculate content hashes for later comparison.
@@ -249,11 +261,12 @@ impl<'a, T: ArtifactOutput, C: Compiler> ArtifactsCacheInner<'a, T, C> {
             return true;
         }
 
-        if !self.project.settings.can_use_cached(&entry.compiler_settings) {
-            trace!("solc config not compatible");
+        if !self.project.zksync_zksolc_config.settings.can_use_cached(&entry.compiler_settings) {
+            trace!("zksolc config not compatible");
             return true;
         }
 
+        /*
         // If any requested extra files are missing for any artifact, mark source as dirty to
         // generate them
         for artifacts in self.cached_artifacts.values() {
@@ -265,6 +278,7 @@ impl<'a, T: ArtifactOutput, C: Compiler> ArtifactsCacheInner<'a, T, C> {
                 }
             }
         }
+        */
 
         // all things match, can be reused
         false
@@ -283,34 +297,27 @@ impl<'a, T: ArtifactOutput, C: Compiler> ArtifactsCacheInner<'a, T, C> {
 /// Abstraction over configured caching which can be either non-existent or an already loaded cache
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
-pub(crate) enum ArtifactsCache<'a, T: ArtifactOutput, C: Compiler> {
+pub(crate) enum ArtifactsCache<'a, T: ArtifactOutput> {
     /// Cache nothing on disk
-    Ephemeral(GraphEdges<SolData>, &'a Project<C, T>),
+    Ephemeral(GraphEdges<SolData>, &'a Project<Solc, T>),
     /// Handles the actual cached artifacts, detects artifacts that can be reused
-    Cached(ArtifactsCacheInner<'a, T, C>),
+    Cached(ArtifactsCacheInner<'a, T>),
 }
 
-/// Override of CompilerCache::read_joined to use zksync paths
-pub fn zksync_override_compiler_cache_read_joined(paths: &ProjectPathsConfig<C>) -> Result<Self> {
-    let mut cache = CompilerCache::read(&paths.zksync_cache)?;
-    cache.join_entries(&paths.root).join_artifacts_files(&paths.zksync_artifacts);
-    Ok(cache)
-}
-
-impl<'a, T: ArtifactOutput, C: Compiler> ArtifactsCache<'a, T, C> {
-    pub fn new(project: &'a Project<C, T>, edges: GraphEdges<SolData>) -> Result<Self> {
+impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
+    pub fn new(project: &'a Project<Solc, T>, edges: GraphEdges<SolData>) -> Result<Self> {
         /// Returns the [SolFilesCache] to use
         ///
         /// Returns a new empty cache if the cache does not exist or `invalidate_cache` is set.
-        fn get_cache<T: ArtifactOutput, C: Compiler>(
-            project: &Project<C, T>,
+        fn get_cache<T: ArtifactOutput>(
+            project: &Project<Solc, T>,
             invalidate_cache: bool,
-        ) -> CompilerCache<ZkSolcConfig> {
+        ) -> CompilerCache<ZkSolcSettings> {
             // the currently configured paths
             let paths = project.paths.zksync_paths_relative();
 
-            if !invalidate_cache && project.zksync_cache_path().exists() {
-                if let Ok(cache) = CompilerCache::<ZkSolcConfig>::read_joined(&project.paths) {
+            if !invalidate_cache && zksync::project_cache_path(project).exists() {
+                if let Ok(cache) = zksync_override_compiler_cache_read_joined(&project.paths) {
                     if cache.paths == paths {
                         // unchanged project paths
                         return cache;
@@ -319,7 +326,7 @@ impl<'a, T: ArtifactOutput, C: Compiler> ArtifactsCache<'a, T, C> {
             }
 
             // new empty cache
-            CompilerCache::<ZkSolcConfig>::new(Default::default(), paths)
+            CompilerCache::<ZkSolcSettings>::new(Default::default(), paths)
         }
 
         let cache = if project.cached {
@@ -334,7 +341,7 @@ impl<'a, T: ArtifactOutput, C: Compiler> ArtifactsCache<'a, T, C> {
             cache.remove_missing_files();
 
             // read all artifacts
-            let cached_artifacts = if project.paths.artifacts.exists() {
+            let cached_artifacts = if project.paths.zksync_artifacts.exists() {
                 trace!("reading artifacts from cache...");
                 // if we failed to read the whole set of artifacts we use an empty set
                 let artifacts = cache.read_artifacts().unwrap_or_default();
@@ -349,9 +356,9 @@ impl<'a, T: ArtifactOutput, C: Compiler> ArtifactsCache<'a, T, C> {
                 cached_artifacts,
                 edges,
                 project,
-                filtered: Default::default(),
-                dirty_source_files: Default::default(),
+                dirty_sources: Default::default(),
                 content_hashes: Default::default(),
+                sources_in_scope: Default::default(),
             };
 
             ArtifactsCache::Cached(cache)
@@ -375,7 +382,7 @@ impl<'a, T: ArtifactOutput, C: Compiler> ArtifactsCache<'a, T, C> {
     #[allow(unused)]
     #[doc(hidden)]
     // only useful for debugging for debugging purposes
-    pub fn as_cached(&self) -> Option<&ArtifactsCacheInner<'a, T, C>> {
+    pub fn as_cached(&self) -> Option<&ArtifactsCacheInner<'a, T>> {
         match self {
             ArtifactsCache::Ephemeral(_, _) => None,
             ArtifactsCache::Cached(cached) => Some(cached),
@@ -389,7 +396,7 @@ impl<'a, T: ArtifactOutput, C: Compiler> ArtifactsCache<'a, T, C> {
         }
     }
 
-    pub fn project(&self) -> &'a Project<C, T> {
+    pub fn project(&self) -> &'a Project<Solc, T> {
         match self {
             ArtifactsCache::Ephemeral(_, project) => project,
             ArtifactsCache::Cached(cache) => cache.project,
@@ -397,10 +404,10 @@ impl<'a, T: ArtifactOutput, C: Compiler> ArtifactsCache<'a, T, C> {
     }
 
     /// Adds the file's hashes to the set if not set yet
-    pub fn fill_content_hashes(&mut self, sources: &Sources) {
+    pub fn remove_dirty_sources(&mut self) {
         match self {
             ArtifactsCache::Ephemeral(_, _) => {}
-            ArtifactsCache::Cached(cache) => cache.fill_hashes(sources),
+            ArtifactsCache::Cached(cache) => cache.find_and_remove_dirty(),
         }
     }
 
@@ -430,75 +437,45 @@ impl<'a, T: ArtifactOutput, C: Compiler> ArtifactsCache<'a, T, C> {
         let ArtifactsCacheInner {
             mut cache,
             mut cached_artifacts,
-            mut dirty_source_files,
-            filtered,
+            dirty_sources,
+            sources_in_scope,
             project,
             ..
         } = cache;
 
-        // keep only those files that were previously filtered (not dirty, reused)
-        cache.retain(filtered.iter().map(|(p, (_, v))| (p.as_path(), v)));
+        // Remove cached artifacts which are out of scope, dirty or appear in `written_artifacts`.
+        cached_artifacts.0.retain(|file, artifacts| {
+            let file = Path::new(file);
+            artifacts.retain(|name, artifacts| {
+                artifacts.retain(|artifact| {
+                    let version = &artifact.version;
 
-        // add the written artifacts to the cache entries, this way we can keep a mapping
-        // from solidity file to its artifacts
-        // this step is necessary because the concrete artifacts are only known after solc
-        // was invoked and received as output, before that we merely know the file and
-        // the versions, so we add the artifacts on a file by file basis
-        for (file, written_artifacts) in written_artifacts.as_ref() {
-            let file_path = Path::new(file);
-            if let Some((cache_entry, versions)) = dirty_source_files.get_mut(file_path) {
-                cache_entry.insert_artifacts(written_artifacts.iter().map(|(name, artifacts)| {
-                    let artifacts = artifacts
-                        .iter()
-                        .filter(|artifact| versions.contains(&artifact.version))
-                        .collect::<Vec<_>>();
-                    (name, artifacts)
-                }));
-            }
-
-            // cached artifacts that were overwritten also need to be removed from the
-            // `cached_artifacts` set
-            if let Some((f, mut cached)) = cached_artifacts.0.remove_entry(file) {
-                trace!(file, "checking for obsolete cached artifact entries");
-                cached.retain(|name, cached_artifacts| {
-                    let Some(written_files) = written_artifacts.get(name) else {
+                    if !sources_in_scope.contains(file, version) {
                         return false;
-                    };
-
-                    // written artifact clashes with a cached artifact, so we need to decide whether
-                    // to keep or to remove the cached
-                    cached_artifacts.retain(|f| {
-                        // we only keep those artifacts that don't conflict with written artifacts
-                        // and which version was a compiler target
-                        let same_version =
-                            written_files.iter().all(|other| other.version != f.version);
-                        let is_filtered = filtered
-                            .get(file_path)
-                            .map(|(_, versions)| versions.contains(&f.version))
-                            .unwrap_or_default();
-                        let retain = same_version && is_filtered;
-                        if !retain {
-                            trace!(
-                                artifact=%f.file.display(),
-                                contract=%name,
-                                version=%f.version,
-                                "purging obsolete cached artifact",
-                            );
-                        }
-                        retain
-                    });
-
-                    !cached_artifacts.is_empty()
+                    }
+                    if dirty_sources.contains(file) {
+                        return false;
+                    }
+                    if written_artifacts.find_artifact(file, name, version).is_some() {
+                        return false;
+                    }
+                    true
                 });
+                !artifacts.is_empty()
+            });
+            !artifacts.is_empty()
+        });
 
-                if !cached.is_empty() {
-                    cached_artifacts.0.insert(f, cached);
-                }
+        // Update cache entries with newly written artifacts. We update data for any artifacts as
+        // `written_artifacts` always contain the most recent data.
+        for (file, artifacts) in written_artifacts.as_ref() {
+            let file_path = Path::new(file);
+            // Only update data for existing entries, we should have entries for all in-scope files
+            // by now.
+            if let Some(entry) = cache.files.get_mut(file_path) {
+                entry.merge_artifacts(artifacts);
             }
         }
-
-        // add the new cache entries to the cache file
-        cache.extend(dirty_source_files.into_iter().map(|(file, (entry, _))| (file, entry)));
 
         // write to disk
         if write_to_disk {
@@ -506,8 +483,8 @@ impl<'a, T: ArtifactOutput, C: Compiler> ArtifactsCache<'a, T, C> {
             // paths relative to the artifact's directory
             cache
                 .strip_entries_prefix(project.root())
-                .strip_artifact_files_prefixes(project.zksync_artifacts_path());
-            cache.write(project.zksync_cache_path())?;
+                .strip_artifact_files_prefixes(zksync::project_artifacts_path(project));
+            cache.write(zksync::project_cache_path(project))?;
         }
 
         Ok(cached_artifacts)

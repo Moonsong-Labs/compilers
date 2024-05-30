@@ -1,14 +1,16 @@
 use self::input::ZkSolcInput;
 use crate::{
+    compilers::CompilerInput,
     error::{Result, SolcError},
     zksync::artifacts::CompilerOutput,
-    Solc,
+    Solc, Source,
 };
 
+use itertools::Itertools;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{
-    fmt,
+    collections::BTreeSet,
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
     str::FromStr,
@@ -76,10 +78,14 @@ impl ZkSolcOS {
 pub struct ZkSolc {
     /// Path to the `zksolc` executable
     pub zksolc: PathBuf,
-    /// The base path to set when invoking zksolc
+    /// Value for --base path
     pub base_path: Option<PathBuf>,
-    /// Additional arguments passed to the `zksolc` exectuable
-    pub args: Vec<String>,
+    /// Value for --allow-paths arg.
+    pub allow_paths: BTreeSet<PathBuf>,
+    /// Value for --include-paths arg.
+    pub include_paths: BTreeSet<PathBuf>,
+    /// Value for --solc arg
+    pub solc: Option<PathBuf>,
 }
 
 impl Default for ZkSolc {
@@ -92,20 +98,16 @@ impl Default for ZkSolc {
     }
 }
 
-impl fmt::Display for ZkSolc {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.zksolc.display())?;
-        if !self.args.is_empty() {
-            write!(f, " {}", self.args.join(" "))?;
-        }
-        Ok(())
-    }
-}
-
 impl ZkSolc {
     /// A new instance which points to `zksolc`
     pub fn new(path: impl Into<PathBuf>) -> Self {
-        ZkSolc { zksolc: path.into(), base_path: None, args: Vec::new() }
+        ZkSolc {
+            zksolc: path.into(),
+            base_path: None,
+            allow_paths: Default::default(),
+            include_paths: Default::default(),
+            solc: None,
+        }
     }
 
     /// Associate a template ZkSolc instance with a Solc compiler instance,
@@ -119,14 +121,9 @@ impl ZkSolc {
         // `Project::configure_solc_with_version call`. This might not be the case
         // so we need to double check at some point.
         zksolc.base_path = solc.base_path;
-        zksolc.args = solc.args;
-
-        zksolc = zksolc.arg("--solc").arg(
-            solc.solc
-                .into_os_string()
-                .into_string()
-                .map_err(|_e| SolcError::msg("Could not stringify solc path"))?,
-        );
+        zksolc.allow_paths = solc.allow_paths;
+        zksolc.include_paths = solc.include_paths;
+        zksolc.solc = Some(solc.solc);
 
         Ok(zksolc)
     }
@@ -137,46 +134,19 @@ impl ZkSolc {
         self
     }
 
-    /// Adds an argument to pass to the `zksolc` command.
-    #[must_use]
-    pub fn arg<T: Into<String>>(mut self, arg: T) -> Self {
-        self.args.push(arg.into());
-        self
-    }
-
-    /// Adds multiple arguments to pass to the `zksolc`.
-    #[must_use]
-    pub fn args<I, S>(mut self, args: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        for arg in args {
-            self = self.arg(arg);
-        }
-        self
-    }
-
     /// Convenience function for compiling all sources under the given path
     pub fn compile_source(&self, path: impl AsRef<Path>) -> Result<CompilerOutput> {
         let path = path.as_ref();
         let mut res: CompilerOutput = Default::default();
-        for input in ZkSolcInput::new(path)? {
+        for input in ZkSolcInput::build(
+            Source::read_sol_yul_from(path)?,
+            Default::default(),
+            &self.version()?,
+        ) {
             let (output, _) = self.compile(&input)?;
             res.merge(output)
         }
         Ok(res)
-    }
-
-    /// Same as [`Self::compile()`], but only returns those files which are included in the
-    /// `ZkSolcInput`.
-    ///
-    /// In other words, this removes those files from the `CompilerOutput` that are __not__ included
-    /// in the provided `ZkSolcInput`.
-    pub fn compile_exact(&self, input: &ZkSolcInput) -> Result<CompilerOutput> {
-        let (mut out, _) = self.compile(input)?;
-        out.retain_files(input.sources.keys().filter_map(|p| p.to_str()));
-        Ok(out)
     }
 
     /// Compiles with `--standard-json` and deserializes the output as [`CompilerOutput`].
@@ -199,6 +169,26 @@ impl ZkSolc {
             cmd.arg("--base-path").arg(base_path);
         }
 
+        if !self.allow_paths.is_empty() {
+            cmd.arg("--allow-paths");
+            cmd.arg(self.allow_paths.iter().map(|p| p.display()).join(","));
+        }
+
+        if let Some(base_path) = &self.base_path {
+            for path in self.include_paths.iter().filter(|p| p.as_path() != base_path.as_path()) {
+                cmd.arg("--include-path").arg(path);
+            }
+
+            cmd.arg("--base-path").arg(base_path);
+
+            cmd.current_dir(base_path);
+        }
+
+        if let Some(solc) = &self.solc {
+            cmd.arg("--solc");
+            cmd.arg(solc);
+        }
+
         if input.settings.system_mode {
             cmd.arg("--system-mode");
         }
@@ -211,7 +201,7 @@ impl ZkSolc {
             cmd.arg("--detect-missing-libraries");
         }
 
-        cmd.args(&self.args).arg("--standard-json");
+        cmd.arg("--standard-json");
         cmd.stdin(Stdio::piped()).stderr(Stdio::piped()).stdout(Stdio::piped());
 
         trace!(input=%serde_json::to_string(input).unwrap_or_else(|e| e.to_string()));

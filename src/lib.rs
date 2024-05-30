@@ -55,9 +55,7 @@ use solang_parser::pt::SourceUnitPart;
 
 pub mod zksync;
 use zksync::{
-    artifact_output::zk::ZkArtifactOutput,
-    compile::{output::ProjectCompileOutput as ZkProjectCompileOutput, ZkSolc},
-    config::ZkSolcConfig,
+    artifact_output::zk::ZkArtifactOutput, compilers::zksolc::ZkSolc, config::ZkSolcConfig,
 };
 
 pub mod report;
@@ -566,73 +564,6 @@ impl<T: ArtifactOutput, C: Compiler> Project<C, T> {
         }
 
         Ok(paths.remove(0))
-    }
-
-    /// Returns the path to the artifacts directory
-    pub fn zksync_artifacts_path(&self) -> &PathBuf {
-        &self.paths.zksync_artifacts
-    }
-
-    /// Returns the path to the cache file
-    pub fn zksync_cache_path(&self) -> &PathBuf {
-        &self.paths.zksync_cache
-    }
-
-    #[instrument(skip_all, name = "zksync_compile")]
-    pub fn zksync_compile(&self) -> Result<ZkProjectCompileOutput> {
-        let sources = match self.zksync_avoid_contracts {
-            Some(ref contracts_to_avoid) => Source::read_all(
-                self.paths
-                    .input_files()
-                    .into_iter()
-                    .filter(|p| !contracts_to_avoid.iter().any(|c| c.is_match(p))),
-            )?,
-            None => self.paths.read_input_files()?,
-        };
-        trace!("found {} sources to compile: {:?}", sources.len(), sources.keys());
-
-        #[cfg(feature = "svm-solc")]
-        if self.auto_detect {
-            trace!("using solc auto detection to compile sources");
-            return self.zksync_svm_compile(sources);
-        }
-
-        self.zksync_compile_with_solc_version(&self.solc, sources)
-    }
-
-    pub fn zksync_compile_with_solc_version(
-        &self,
-        solc: &Solc,
-        sources: Sources,
-    ) -> Result<ZkProjectCompileOutput> {
-        zksync::compile::project::ProjectCompiler::with_sources_and_solc(
-            self,
-            sources,
-            solc.clone(),
-        )?
-        .compile()
-    }
-
-    #[cfg(feature = "svm-solc")]
-    pub fn zksync_svm_compile(&self, sources: Sources) -> Result<ZkProjectCompileOutput> {
-        zksync::compile::project::ProjectCompiler::with_sources(self, sources)?.compile()
-    }
-
-    pub fn zksync_compile_files<P, I>(&self, files: I) -> Result<ZkProjectCompileOutput>
-    where
-        I: IntoIterator<Item = P>,
-        P: Into<PathBuf>,
-    {
-        let sources = Source::read_all(files)?;
-
-        #[cfg(feature = "svm-solc")]
-        if self.auto_detect {
-            return zksync::compile::project::ProjectCompiler::with_sources(self, sources)?
-                .compile();
-        }
-
-        let solc = self.configure_solc(self.solc.clone());
-        self.zksync_compile_with_solc_version(&solc, sources)
     }
 }
 

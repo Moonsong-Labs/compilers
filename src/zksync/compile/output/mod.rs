@@ -312,7 +312,11 @@ impl AggregatedCompilerOutput {
     }
 
     /// Removes the contract with matching path and name
-    pub fn remove(&mut self, path: impl AsRef<str>, contract: impl AsRef<str>) -> Option<Contract> {
+    pub fn remove(
+        &mut self,
+        path: impl AsRef<Path>,
+        contract: impl AsRef<str>,
+    ) -> Option<Contract> {
         self.contracts.remove(path, contract)
     }
 
@@ -327,7 +331,7 @@ impl AggregatedCompilerOutput {
     ) -> Option<Contract> {
         let ContractInfoRef { path, name } = info.into();
         if let Some(path) = path {
-            self.remove(path, name)
+            self.remove(Path::new(path.as_ref()), name)
         } else {
             self.remove_first(name)
         }
@@ -344,28 +348,30 @@ impl AggregatedCompilerOutput {
     }
 
     /// Returns an iterator over (`file`, `name`, `Contract`)
-    pub fn contracts_with_files_iter(&self) -> impl Iterator<Item = (&String, &String, &Contract)> {
+    pub fn contracts_with_files_iter(
+        &self,
+    ) -> impl Iterator<Item = (&PathBuf, &String, &Contract)> {
         self.contracts.contracts_with_files()
     }
 
     /// Returns an iterator over (`file`, `name`, `Contract`)
     pub fn contracts_with_files_into_iter(
         self,
-    ) -> impl Iterator<Item = (String, String, Contract)> {
+    ) -> impl Iterator<Item = (PathBuf, String, Contract)> {
         self.contracts.into_contracts_with_files()
     }
 
     /// Returns an iterator over (`file`, `name`, `Contract`, `Version`)
     pub fn contracts_with_files_and_version_iter(
         &self,
-    ) -> impl Iterator<Item = (&String, &String, &Contract, &Version)> {
+    ) -> impl Iterator<Item = (&PathBuf, &String, &Contract, &Version)> {
         self.contracts.contracts_with_files_and_version()
     }
 
     /// Returns an iterator over (`file`, `name`, `Contract`, `Version`)
     pub fn contracts_with_files_and_version_into_iter(
         self,
-    ) -> impl Iterator<Item = (String, String, Contract, Version)> {
+    ) -> impl Iterator<Item = (PathBuf, String, Contract, Version)> {
         self.contracts.into_contracts_with_files_and_version()
     }
 
@@ -373,7 +379,7 @@ impl AggregatedCompilerOutput {
     /// bytecode, runtime bytecode, and ABI.
     pub fn get(
         &self,
-        path: impl AsRef<str>,
+        path: impl AsRef<Path>,
         contract: impl AsRef<str>,
     ) -> Option<CompactContractRef<'_>> {
         self.contracts.get(path, contract)
