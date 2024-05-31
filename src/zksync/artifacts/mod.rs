@@ -196,6 +196,8 @@ pub struct Settings {
     /// A flag indicating whether to forcibly switch to the EVM legacy assembly pipeline.
     #[serde(default)]
     pub force_evmla: bool,
+
+    pub solc: Option<std::path::PathBuf>,
 }
 
 impl Settings {
@@ -235,6 +237,7 @@ impl Default for Settings {
             system_mode: false,
             force_evmla: false,
             detect_missing_libraries: false,
+            solc: None,
         }
     }
 }

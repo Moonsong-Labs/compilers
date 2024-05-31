@@ -25,6 +25,7 @@ pub mod output;
 pub mod project;
 
 pub const ZKSOLC: &str = "zksolc";
+pub const ZKSYNC_SOLC_RELEASE: Version = Version::new(1, 0, 0);
 
 #[derive(Debug, Clone, Serialize)]
 enum ZkSolcOS {
@@ -53,6 +54,14 @@ impl ZkSolcOS {
         }
     }
 
+    fn get_solc_prefix(&self) -> &str {
+        match self {
+            ZkSolcOS::Linux => "solc-linux-amd64-",
+            ZkSolcOS::MacAMD => "solc-macosx-amd64-",
+            ZkSolcOS::MacARM => "solc-macosx-arm64-",
+        }
+    }
+
     #[cfg(feature = "async")]
     fn get_download_uri(&self) -> &str {
         match self {
@@ -76,6 +85,8 @@ pub struct ZkSolc {
     pub zksolc: PathBuf,
     /// The base path to set when invoking zksolc
     pub base_path: Option<PathBuf>,
+    /// Value for --solc arg
+    pub solc: Option<PathBuf>,
     /// Additional arguments passed to the `zksolc` exectuable
     pub args: Vec<String>,
 }
@@ -103,7 +114,7 @@ impl fmt::Display for ZkSolc {
 impl ZkSolc {
     /// A new instance which points to `zksolc`
     pub fn new(path: impl Into<PathBuf>) -> Self {
-        ZkSolc { zksolc: path.into(), base_path: None, args: Vec::new() }
+        ZkSolc { zksolc: path.into(), base_path: None, args: Vec::new(), solc: None }
     }
 
     /// Associate a template ZkSolc instance with a Solc compiler instance,
@@ -116,15 +127,24 @@ impl ZkSolc {
         // asume they will come with what we want from the
         // `Project::configure_solc_with_version call`. This might not be the case
         // so we need to double check at some point.
+        let solc_version = &solc.version()?;
+        let solc_version_without_metadata =
+            format!("{}.{}.{}", solc_version.major, solc_version.minor, solc_version.patch);
         zksolc.base_path = solc.base_path;
         zksolc.args = solc.args;
 
-        zksolc = zksolc.arg("--solc").arg(
-            solc.solc
-                .into_os_string()
-                .into_string()
-                .map_err(|_e| SolcError::msg("Could not stringify solc path"))?,
-        );
+        // get or install zksync's solc
+        // TODO: If solc path is set is settings there is no need to do this
+        // as the Zksolc value will be ignored and the settings one used instead.
+        let maybe_solc = Self::find_solc_installed_version(&solc_version_without_metadata)?;
+        if let Some(solc) = maybe_solc {
+            zksolc.solc = Some(solc);
+        } else {
+            // TODO: respect offline settings although it requires moving where we
+            // check and get zksolc solc pathj
+            let installed_solc_path = Self::solc_blocking_install(&solc_version_without_metadata)?;
+            zksolc.solc = Some(installed_solc_path);
+        }
 
         Ok(zksolc)
     }
@@ -209,6 +229,12 @@ impl ZkSolc {
             cmd.arg("--detect-missing-libraries");
         }
 
+        if let Some(solc) = &input.settings.solc {
+            cmd.arg("--solc").arg(solc);
+        } else if let Some(solc) = &self.solc {
+            cmd.arg("--solc").arg(solc);
+        }
+
         cmd.args(&self.args).arg("--standard-json");
         cmd.stdin(Stdio::piped()).stderr(Stdio::piped()).stdout(Stdio::piped());
 
@@ -287,17 +313,27 @@ impl ZkSolc {
         Ok(Self::compilers_dir()?.join(format!("{}v{}", os.get_compiler(), version)))
     }
 
+    fn solc_path(version_str: &str) -> Result<PathBuf> {
+        let os = get_operating_system()?;
+        Ok(Self::compilers_dir()?.join(format!(
+            "{}{}-{}",
+            os.get_solc_prefix(),
+            version_str,
+            ZKSYNC_SOLC_RELEASE
+        )))
+    }
+
     /// Install zksolc version and block the thread
     // TODO: Maybe this (and the whole module) goes behind a zksync feature installed
     #[cfg(feature = "async")]
     pub fn blocking_install(version: &Version) -> Result<Self> {
         use crate::utils::RuntimeOrHandle;
 
-        trace!("blocking installing solc version \"{}\"", version);
+        trace!("blocking installing zksolc version \"{}\"", version);
         // TODO: Evaluate report support
         //crate::report::solc_installation_start(version);
-        // An async block is used because the underlying `reqwest::blocking::Client` does not behave well
-        // inside of a Tokio runtime. See: https://github.com/seanmonstar/reqwest/issues/1017
+        // An async block is used because the underlying `reqwest::blocking::Client` does not behave
+        // well inside of a Tokio runtime. See: https://github.com/seanmonstar/reqwest/issues/1017
         let install = RuntimeOrHandle::new().block_on(async {
             let os = get_operating_system()?;
             let download_uri = os.get_download_uri();
@@ -359,6 +395,65 @@ impl ZkSolc {
         }
     }
 
+    #[cfg(feature = "async")]
+    pub fn solc_blocking_install(version_str: &str) -> Result<PathBuf> {
+        use crate::utils::RuntimeOrHandle;
+
+        trace!("blocking installing solc version \"{}\"", version_str);
+        // TODO: Evaluate report support
+        //crate::report::solc_installation_start(version);
+        // An async block is used because the underlying `reqwest::blocking::Client` does not behave
+        // well inside of a Tokio runtime. See: https://github.com/seanmonstar/reqwest/issues/1017
+        RuntimeOrHandle::new().block_on(async {
+            let os = get_operating_system()?;
+            let solc_prefix = os.get_solc_prefix();
+            let full_download_url = format!(
+                "https://github.com/matter-labs/era-solidity/releases/download/{}-{}/{}{}-{}",
+                version_str, ZKSYNC_SOLC_RELEASE, solc_prefix, version_str, ZKSYNC_SOLC_RELEASE
+            );
+
+            let solc_path = Self::solc_path(version_str)?;
+
+            let client = reqwest::Client::new();
+            let response = client
+                .get(full_download_url)
+                .send()
+                .await
+                .map_err(|e| SolcError::msg(format!("Failed to download file: {}", e)))?;
+
+            if response.status().is_success() {
+                let compilers_dir = Self::compilers_dir()?;
+                if !compilers_dir.exists() {
+                    create_dir_all(compilers_dir).await.map_err(|e| {
+                        SolcError::msg(format!("Could not create compilers path: {}", e))
+                    })?;
+                }
+                let mut output_file = File::create(&solc_path)
+                    .await
+                    .map_err(|e| SolcError::msg(format!("Failed to create output file: {}", e)))?;
+
+                let content = response
+                    .bytes()
+                    .await
+                    .map_err(|e| SolcError::msg(format!("failed to download file: {}", e)))?;
+
+                copy(&mut content.as_ref(), &mut output_file).await.map_err(|e| {
+                    SolcError::msg(format!("Failed to write the downloaded file: {}", e))
+                })?;
+
+                set_permissions(&solc_path, PermissionsExt::from_mode(0o755)).await.map_err(
+                    |e| SolcError::msg(format!("Failed to set zksync compiler permissions: {e}")),
+                )?;
+            } else {
+                return Err(SolcError::msg(format!(
+                    "Failed to download file: status code {}",
+                    response.status()
+                )));
+            }
+            Ok(solc_path)
+        })
+    }
+
     pub fn find_installed_version(version: &Version) -> Result<Option<Self>> {
         let zksolc = Self::compiler_path(version)?;
 
@@ -366,6 +461,15 @@ impl ZkSolc {
             return Ok(None);
         }
         Ok(Some(ZkSolc::new(zksolc)))
+    }
+
+    pub fn find_solc_installed_version(version_str: &str) -> Result<Option<PathBuf>> {
+        let solc = Self::solc_path(version_str)?;
+
+        if !solc.is_file() {
+            return Ok(None);
+        }
+        Ok(Some(solc))
     }
 }
 
