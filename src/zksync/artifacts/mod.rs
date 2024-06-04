@@ -196,7 +196,7 @@ pub struct Settings {
     /// A flag indicating whether to forcibly switch to the EVM legacy assembly pipeline.
     #[serde(default)]
     pub force_evmla: bool,
-
+    /// The path to the solc compiler to use along zksolc.
     pub solc: Option<std::path::PathBuf>,
 }
 
