@@ -41,6 +41,14 @@ impl<'a, T: ArtifactOutput> ProjectCompiler<'a, T> {
         let solc_version = solc.version()?;
         let (sources, edges) = Graph::resolve_sources(&project.paths, sources)?.into_sources();
 
+        // We need this here because paths are set on this method and
+        // zksolc inherits them later from solc
+        let solc = project.configure_solc_with_version(
+            solc,
+            Some(solc_version.clone()),
+            edges.include_paths().clone(),
+        );
+
         let sources_by_version = BTreeMap::from([(solc, (solc_version, sources))]);
         let sources = CompilerSources::Sequential(sources_by_version);
 
