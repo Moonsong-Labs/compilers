@@ -92,6 +92,10 @@ impl ProjectCompileOutput {
         &self.compiler_output
     }
 
+    pub fn into_output(self) -> AggregatedCompilerOutput {
+        self.compiler_output
+    }
+
     /// Finds the artifact with matching path and name
     pub fn find(
         &self,
