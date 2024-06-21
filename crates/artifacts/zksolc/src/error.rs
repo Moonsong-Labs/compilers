@@ -1,4 +1,4 @@
-use crate::artifacts::error::{Severity, SourceLocation};
+use foundry_compilers_artifacts_solc::error::{Severity, SourceLocation};
 
 use serde::{
     de::{self, Deserializer},

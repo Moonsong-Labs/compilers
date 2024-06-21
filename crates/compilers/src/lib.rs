@@ -39,9 +39,9 @@ pub use filter::{
 };
 
 pub mod zksync;
-use zksync::{
-    artifact_output::zk::ZkArtifactOutput, compilers::zksolc::ZkSolc, config::ZkSolcConfig,
-};
+
+use crate::compilers::zksolc::ZkSolc;
+use zksync::{artifact_output::zk::ZkArtifactOutput, config::ZkSolcConfig};
 
 pub mod report;
 

@@ -3,6 +3,7 @@ use crate::{
     compilers::{multi::MultiCompilerLanguage, Language},
     flatten::{collect_ordered_deps, combine_version_pragmas},
     resolver::{parse::SolData, SolImportAlias},
+    zksync::cache::ZKSYNC_SOLIDITY_FILES_CACHE_FILENAME,
     Graph,
 };
 use foundry_compilers_artifacts::{
@@ -16,7 +17,6 @@ use foundry_compilers_core::{
     utils,
 };
 
-//zksync::cache::ZKSYNC_SOLIDITY_FILES_CACHE_FILENAME,
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet,

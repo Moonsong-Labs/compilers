@@ -1,4 +1,4 @@
-use crate::artifacts::{FileToContractsMap, SourceFile, SourceFiles};
+use foundry_compilers_artifacts_solc::{FileToContractsMap, SourceFile, SourceFiles};
 
 use serde::{Deserialize, Serialize};
 use std::{

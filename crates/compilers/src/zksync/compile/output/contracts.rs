@@ -1,7 +1,5 @@
-use crate::{
-    artifacts::FileToContractsMap,
-    zksync::artifacts::contract::{CompactContractRef, Contract},
-};
+use crate::artifacts::FileToContractsMap;
+use foundry_compilers_artifacts::zksolc::contract::{CompactContractRef, Contract};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -237,4 +235,5 @@ impl IntoIterator for VersionedContracts {
 pub struct VersionedContract {
     pub contract: Contract,
     pub version: Version,
+    pub build_id: String,
 }

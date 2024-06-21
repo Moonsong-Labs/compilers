@@ -1,19 +1,20 @@
 //! Support for compiling contracts.
 
 use crate::{
-    artifact_output::OutputContext,
+    artifact_output::{ArtifactOutput, Artifacts, OutputContext},
     artifacts::Sources,
     cache::{CacheEntry, CompilerCache, GroupedSources},
     error::Result,
     filter::{FilteredSources, SourceCompilationKind},
+    output::Builds,
     resolver::{parse::SolData, GraphEdges},
+    solc::SolcCompiler,
     utils,
-    zksync::{
-        self, artifact_output::zk::ZkContractArtifact, compilers::zksolc::settings::ZkSolcSettings,
-    },
-    ArtifactOutput, Artifacts, Compiler, CompilerSettings, Graph, Project, ProjectPathsConfig,
-    Solc, Source,
+    zksolc::settings::ZkSolcSettings,
+    zksync::{self, artifact_output::zk::ZkContractArtifact},
+    CompilerSettings, Graph, Project, ProjectPathsConfig, Source,
 };
+use foundry_compilers_artifacts::SolcLanguage;
 use semver::Version;
 use std::{
     collections::{btree_map::BTreeMap, btree_set::BTreeSet, hash_map, HashMap, HashSet},
@@ -31,8 +32,8 @@ pub const ZKSYNC_SOLIDITY_FILES_CACHE_FILENAME: &str = "zksync-solidity-files-ca
 // miss. A way to solve this would be to delete the zksync specific config and use a dedicated
 // `Project` instead, having helpers to create that Project from the `solc` one.
 /// Override of CompilerCache::read_joined to use zksync paths
-pub fn zksync_override_compiler_cache_read_joined<C: Compiler>(
-    paths: &ProjectPathsConfig<C>,
+pub fn zksync_override_compiler_cache_read_joined<L>(
+    paths: &ProjectPathsConfig<L>,
 ) -> Result<CompilerCache<ZkSolcSettings>> {
     let mut cache = CompilerCache::read(&paths.zksync_cache)?;
     cache.join_entries(&paths.root).join_artifacts_files(&paths.zksync_artifacts);
@@ -49,11 +50,14 @@ pub(crate) struct ArtifactsCacheInner<'a, T: ArtifactOutput> {
     /// All already existing artifacts.
     pub cached_artifacts: Artifacts<ZkContractArtifact>,
 
+    /// All already existing build infos.
+    pub cached_builds: Builds<SolcLanguage>,
+
     /// Relationship between all the files.
     pub edges: GraphEdges<SolData>,
 
     /// The project.
-    pub project: &'a Project<Solc, T>,
+    pub project: &'a Project<SolcCompiler, T>,
 
     /// Files that were invalidated and removed from cache.
     /// Those are not grouped by version and purged completely.
@@ -90,6 +94,7 @@ impl<'a, T: ArtifactOutput> ArtifactsCacheInner<'a, T> {
             version_requirement: self.edges.version_requirement(&file).map(|v| v.to_string()),
             // artifacts remain empty until we received the compiler output
             artifacts: Default::default(),
+            seen_by_compiler: false,
         };
 
         self.cache.files.insert(file, entry.clone());
@@ -160,7 +165,7 @@ impl<'a, T: ArtifactOutput> ArtifactsCacheInner<'a, T> {
         // only check artifact's existence if the file generated artifacts.
         // e.g. a solidity file consisting only of import statements (like interfaces that
         // re-export) do not create artifacts
-        if entry.artifacts.is_empty() {
+        if entry.seen_by_compiler && entry.artifacts.is_empty() {
             trace!("no artifacts");
             return false;
         }
@@ -170,10 +175,10 @@ impl<'a, T: ArtifactOutput> ArtifactsCacheInner<'a, T> {
             return true;
         }
 
-        if entry.artifacts_for_version(version).any(|artifact_path| {
-            let missing_artifact = !self.cached_artifacts.has_artifact(artifact_path);
+        if entry.artifacts_for_version(version).any(|artifact| {
+            let missing_artifact = !self.cached_artifacts.has_artifact(&artifact.path);
             if missing_artifact {
-                trace!("missing artifact \"{}\"", artifact_path.display());
+                trace!("missing artifact \"{}\"", artifact.path.display());
             }
             missing_artifact
         }) {
@@ -299,18 +304,18 @@ impl<'a, T: ArtifactOutput> ArtifactsCacheInner<'a, T> {
 #[derive(Debug)]
 pub(crate) enum ArtifactsCache<'a, T: ArtifactOutput> {
     /// Cache nothing on disk
-    Ephemeral(GraphEdges<SolData>, &'a Project<Solc, T>),
+    Ephemeral(GraphEdges<SolData>, &'a Project<SolcCompiler, T>),
     /// Handles the actual cached artifacts, detects artifacts that can be reused
     Cached(ArtifactsCacheInner<'a, T>),
 }
 
 impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
-    pub fn new(project: &'a Project<Solc, T>, edges: GraphEdges<SolData>) -> Result<Self> {
+    pub fn new(project: &'a Project<SolcCompiler, T>, edges: GraphEdges<SolData>) -> Result<Self> {
         /// Returns the [SolFilesCache] to use
         ///
         /// Returns a new empty cache if the cache does not exist or `invalidate_cache` is set.
         fn get_cache<T: ArtifactOutput>(
-            project: &Project<Solc, T>,
+            project: &Project<SolcCompiler, T>,
             invalidate_cache: bool,
         ) -> CompilerCache<ZkSolcSettings> {
             // the currently configured paths
@@ -351,9 +356,13 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
                 Default::default()
             };
 
+            trace!("reading build infos from cache...");
+            let cached_builds = cache.read_builds(&project.paths.build_infos).unwrap_or_default();
+
             let cache = ArtifactsCacheInner {
                 cache,
                 cached_artifacts,
+                cached_builds,
                 edges,
                 project,
                 dirty_sources: Default::default(),
@@ -396,7 +405,7 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
         }
     }
 
-    pub fn project(&self) -> &'a Project<Solc, T> {
+    pub fn project(&self) -> &'a Project<SolcCompiler, T> {
         match self {
             ArtifactsCache::Ephemeral(_, project) => project,
             ArtifactsCache::Cached(cache) => cache.project,

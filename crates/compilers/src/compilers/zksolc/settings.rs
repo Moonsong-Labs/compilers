@@ -1,8 +1,10 @@
 use crate::{
     artifacts::{serde_helpers, EvmVersion, Libraries},
     compilers::CompilerSettings,
-    remappings::Remapping,
-    zksync::artifacts::output_selection::OutputSelection as ZkOutputSelection,
+    OutputSelection,
+};
+use foundry_compilers_artifacts::{
+    remappings::Remapping, zksolc::output_selection::OutputSelection as ZkOutputSelection,
 };
 use serde::{Deserialize, Serialize};
 use std::{fmt, path::Path, str::FromStr};
@@ -113,8 +115,9 @@ impl Default for ZkSolcSettings {
 }
 
 impl CompilerSettings for ZkSolcSettings {
-    fn output_selection_mut(&mut self) -> &mut crate::OutputSelection {
-        panic!("ouptut_selection_mut not implemented for zksolc")
+    fn update_output_selection(&mut self, f: impl FnOnce(&mut OutputSelection) + Copy) {
+        // TODO: see how to support this, noop for now
+        //f(&mut self.output_selection)
     }
 
     fn can_use_cached(&self, other: &Self) -> bool {

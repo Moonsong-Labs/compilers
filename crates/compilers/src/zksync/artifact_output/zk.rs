@@ -4,16 +4,14 @@ use crate::{
     compile::output::sources::VersionedSourceFiles,
     config::ProjectPathsConfig,
     error::{Result, SolcIoError},
-    zksync::{
-        artifacts::{
-            bytecode::Bytecode,
-            contract::{CompactContractBytecodeCow, Contract},
-            Evm,
-        },
-        compile::output::contracts::VersionedContracts,
-    },
+    zksync::compile::output::contracts::VersionedContracts,
 };
 use alloy_json_abi::JsonAbi;
+use foundry_compilers_artifacts::zksolc::{
+    bytecode::Bytecode,
+    contract::{CompactContractBytecodeCow, Contract},
+    Evm,
+};
 use path_slash::PathBufExt;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -275,9 +273,9 @@ impl ZkArtifactOutput {
         // we reuse the path, this will make sure that even if there are conflicting
         // files (files for witch `T::output_file()` would return the same path) we use
         // consistent output paths
-        if let Some(existing_artifact) = ctx.existing_artifact(file, name, version).cloned() {
+        if let Some(existing_artifact) = ctx.existing_artifact(file, name, version) {
             trace!("use existing artifact file {:?}", existing_artifact,);
-            existing_artifact
+            existing_artifact.to_path_buf()
         } else {
             let path = if versioned {
                 Self::output_file_versioned(file, name, version)
@@ -317,7 +315,7 @@ impl ZkArtifactOutput {
             .existing_artifacts
             .values()
             .flat_map(|artifacts| artifacts.values().flat_map(|artifacts| artifacts.values()))
-            .map(|p| p.to_slash_lossy().to_lowercase())
+            .map(|a| a.path.to_slash_lossy().to_lowercase())
             .collect::<HashSet<_>>();
 
         let mut files = contracts.keys().collect::<Vec<_>>();
@@ -365,6 +363,7 @@ impl ZkArtifactOutput {
                         artifact,
                         file: artifact_path,
                         version: contract.version.clone(),
+                        build_id: contract.build_id.clone(),
                     };
 
                     artifacts

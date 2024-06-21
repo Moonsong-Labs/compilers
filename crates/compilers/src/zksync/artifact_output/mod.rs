@@ -8,10 +8,10 @@ use semver::Version;
 use crate::{
     artifact_output::{ArtifactId, Artifacts},
     artifacts::bytecode::BytecodeObject,
-    zksync::{
-        artifact_output::zk::ZkContractArtifact,
-        artifacts::{bytecode::Bytecode, contract::CompactContractBytecodeCow},
-    },
+    zksync::artifact_output::zk::ZkContractArtifact,
+};
+use foundry_compilers_artifacts::zksolc::{
+    bytecode::Bytecode, contract::CompactContractBytecodeCow,
 };
 
 pub mod files;
@@ -64,6 +64,7 @@ pub fn artifacts_artifacts(
                             name,
                             source: source.clone(),
                             version: artifact.version.clone(),
+                            build_id: artifact.build_id.clone(),
                         }
                         .with_slashed_paths(),
                         &artifact.artifact,

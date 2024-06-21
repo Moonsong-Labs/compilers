@@ -4,18 +4,18 @@ use crate::{
     compile::output::{
         info::ContractInfoRef,
         sources::{VersionedSourceFile, VersionedSourceFiles},
-        ErrorFilter,
     },
     zksync::{
         artifact_output::{artifacts_artifacts, contract_name, zk::ZkContractArtifact},
-        artifacts::{
-            contract::{CompactContractRef, Contract},
-            error::Error,
-            CompilerOutput,
-        },
         compile::output::contracts::{VersionedContract, VersionedContracts},
     },
 };
+use foundry_compilers_artifacts::zksolc::{
+    contract::{CompactContractRef, Contract},
+    error::Error,
+    CompilerOutput,
+};
+use foundry_compilers_artifacts::ErrorFilter;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -190,10 +190,6 @@ pub struct AggregatedCompilerOutput {
     pub sources: VersionedSourceFiles,
     /// All compiled contracts combined with the solc version used to compile them
     pub contracts: VersionedContracts,
-    // All the `BuildInfo`s of solc invocations.
-    //pub build_infos: BTreeMap<Version, RawBuildInfo>,
-    /// Whether some compilation triggered recompiling with --detect-missing-libraries setting
-    pub recompiled_with_detect_missing_libraries: bool,
 }
 
 impl AggregatedCompilerOutput {

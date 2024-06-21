@@ -1,8 +1,8 @@
 //! Contract related types.
-use crate::artifacts::{bytecode::BytecodeObject, DevDoc, StorageLayout, UserDoc};
-use crate::zksync::artifacts::{bytecode::Bytecode, Evm};
+use crate::{bytecode::Bytecode, Evm};
 use alloy_json_abi::JsonAbi;
 use alloy_primitives::Bytes;
+use foundry_compilers_artifacts_solc::{bytecode::BytecodeObject, DevDoc, StorageLayout, UserDoc};
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, collections::BTreeMap};
 

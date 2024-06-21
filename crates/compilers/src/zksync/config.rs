@@ -1,4 +1,4 @@
-use crate::zksync::compilers::zksolc::settings::ZkSolcSettings;
+use crate::zksolc::settings::ZkSolcSettings;
 use serde::{Deserialize, Serialize};
 
 /// The config to use when compiling the contracts
