@@ -3,6 +3,7 @@
 use crate::{
     artifact_output::{ArtifactOutput, Artifacts, OutputContext},
     artifacts::Sources,
+    buildinfo::RawBuildInfo,
     cache::{CacheEntry, CompilerCache, GroupedSources},
     error::Result,
     filter::{FilteredSources, SourceCompilationKind},
@@ -436,8 +437,9 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
     pub fn consume(
         self,
         written_artifacts: &Artifacts<ZkContractArtifact>,
+        written_build_infos: &Vec<RawBuildInfo<SolcLanguage>>,
         write_to_disk: bool,
-    ) -> Result<Artifacts<ZkContractArtifact>> {
+    ) -> Result<(Artifacts<ZkContractArtifact>, Builds<SolcLanguage>)> {
         let ArtifactsCache::Cached(cache) = self else {
             trace!("no cache configured, ephemeral");
             return Ok(Default::default());
@@ -446,6 +448,7 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
         let ArtifactsCacheInner {
             mut cache,
             mut cached_artifacts,
+            cached_builds,
             dirty_sources,
             sources_in_scope,
             project,
@@ -486,6 +489,10 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
             }
         }
 
+        for build_info in written_build_infos {
+            cache.builds.insert(build_info.id.clone());
+        }
+
         // write to disk
         if write_to_disk {
             // make all `CacheEntry` paths relative to the project root and all artifact
@@ -496,6 +503,6 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
             cache.write(zksync::project_cache_path(project))?;
         }
 
-        Ok(cached_artifacts)
+        Ok((cached_artifacts, cached_builds))
     }
 }

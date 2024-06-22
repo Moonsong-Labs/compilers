@@ -7,10 +7,13 @@ use crate::{
     zksync::compile::output::contracts::VersionedContracts,
 };
 use alloy_json_abi::JsonAbi;
-use foundry_compilers_artifacts::zksolc::{
-    bytecode::Bytecode,
-    contract::{CompactContractBytecodeCow, Contract},
-    Evm,
+use foundry_compilers_artifacts::{
+    zksolc::{
+        bytecode::Bytecode,
+        contract::{CompactContractBytecodeCow, Contract},
+        Evm,
+    },
+    SolcLanguage,
 };
 use path_slash::PathBufExt;
 use semver::Version;
@@ -128,7 +131,7 @@ impl ZkArtifactOutput {
         &self,
         contracts: &VersionedContracts,
         sources: &VersionedSourceFiles,
-        layout: &ProjectPathsConfig,
+        layout: &ProjectPathsConfig<SolcLanguage>,
         ctx: OutputContext<'_>,
     ) -> Result<Artifacts<ZkContractArtifact>> {
         let mut artifacts = self.output_to_artifacts(contracts, sources, ctx, layout);
@@ -303,7 +306,7 @@ impl ZkArtifactOutput {
         contracts: &VersionedContracts,
         sources: &VersionedSourceFiles,
         ctx: OutputContext<'_>,
-        layout: &ProjectPathsConfig,
+        layout: &ProjectPathsConfig<SolcLanguage>,
     ) -> Artifacts<ZkContractArtifact> {
         let mut artifacts = ArtifactsMap::new();
 

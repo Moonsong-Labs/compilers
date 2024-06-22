@@ -3,6 +3,7 @@ use crate::{
     compilers::{zksolc::ZkSolc, CompilerInput},
     error::Result,
     filter::SparseOutputFilter,
+    output::Builds,
     report,
     resolver::{parse::SolData, GraphEdges},
     solc::SolcCompiler,
@@ -14,7 +15,7 @@ use crate::{
     },
     Compiler, FilteredSources, Graph, Project, Source, Sources,
 };
-use foundry_compilers_artifacts::zksolc::CompilerOutput;
+use foundry_compilers_artifacts::{zksolc::CompilerOutput, SolcLanguage};
 use semver::Version;
 use std::{collections::HashMap, path::PathBuf, time::Instant};
 
@@ -229,11 +230,24 @@ impl<'a, T: ArtifactOutput> ArtifactsState<'a, T> {
         // TODO: We do not write cache that was recompiled with --detect-missing-libraries as
         // settings won't match the project's zksolc settings. Ideally we would update the
         // corresponding cache entries adding that setting
-        let skip_write_to_disk =
-            project.no_artifacts || has_error || output.recompiled_with_detect_missing_libraries;
+        let skip_write_to_disk = project.no_artifacts || has_error;
         trace!(has_error, project.no_artifacts, skip_write_to_disk, cache_path=?project.cache_path(),"prepare writing cache file");
 
-        let cached_artifacts = cache.consume(&compiled_artifacts, !skip_write_to_disk)?;
+        let (cached_artifacts, cached_builds) =
+            cache.consume(&compiled_artifacts, &output.build_infos, !skip_write_to_disk)?;
+
+        //project.artifacts_handler().handle_cached_artifacts(&cached_artifacts)?;
+        //
+        let builds = Builds(
+            output
+                .build_infos
+                .iter()
+                .map(|build_info| (build_info.id.clone(), build_info.build_context.clone()))
+                .chain(cached_builds)
+                .map(|(id, context)| (id, context.with_joined_paths(project.paths.root.as_path())))
+                .collect(),
+        );
+
         Ok(ProjectCompileOutput {
             compiler_output: output,
             compiled_artifacts,
@@ -241,6 +255,7 @@ impl<'a, T: ArtifactOutput> ArtifactsState<'a, T> {
             ignored_error_codes,
             ignored_file_paths,
             compiler_severity_filter,
+            builds,
         })
     }
 }
@@ -249,7 +264,7 @@ impl<'a, T: ArtifactOutput> ArtifactsState<'a, T> {
 #[derive(Debug, Clone)]
 enum CompilerSources {
     /// Compile all these sequentially
-    Sequential(VersionedSources<SolcCompiler>),
+    Sequential(VersionedSources<SolcLanguage>),
 }
 
 impl CompilerSources {
@@ -292,15 +307,24 @@ impl CompilerSources {
 
             sources
                 .into_iter()
-                .map(|(solc, version, sources)| {
-                    trace!("Filtering {} sources for {}", sources.len(), version);
-                    let sources_to_compile = cache.filter(sources, &version);
-                    trace!(
-                        "Detected {} sources to compile {:?}",
-                        sources_to_compile.dirty().count(),
-                        sources_to_compile.dirty_files().collect::<Vec<_>>()
-                    );
-                    (solc, version, sources_to_compile)
+                .map(|(language, versioned_sources)| {
+                    (
+                        language,
+                        versioned_sources
+                            .into_iter()
+                            .map(|(version, sources)| {
+                                trace!("Filtering {} sources for {}", sources.len(), version);
+                                let sources_to_compile = cache.filter(sources, &version);
+                                trace!(
+                                    "Detected {} sources to compile {:?}",
+                                    sources_to_compile.dirty().count(),
+                                    sources_to_compile.dirty_files().collect::<Vec<_>>()
+                                );
+
+                                (version, sources_to_compile)
+                            })
+                            .collect(),
+                    )
                 })
                 .collect()
         }

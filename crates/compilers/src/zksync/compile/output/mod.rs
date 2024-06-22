@@ -1,21 +1,26 @@
 use crate::{
     artifact_output::{ArtifactId, Artifacts},
     artifacts::error::Severity,
+    buildinfo::RawBuildInfo,
     compile::output::{
         info::ContractInfoRef,
         sources::{VersionedSourceFile, VersionedSourceFiles},
     },
+    output::Builds,
     zksync::{
         artifact_output::{artifacts_artifacts, contract_name, zk::ZkContractArtifact},
         compile::output::contracts::{VersionedContract, VersionedContracts},
     },
 };
-use foundry_compilers_artifacts::zksolc::{
-    contract::{CompactContractRef, Contract},
-    error::Error,
-    CompilerOutput,
-};
 use foundry_compilers_artifacts::ErrorFilter;
+use foundry_compilers_artifacts::{
+    zksolc::{
+        contract::{CompactContractRef, Contract},
+        error::Error,
+        CompilerOutput,
+    },
+    SolcLanguage,
+};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -40,6 +45,8 @@ pub struct ProjectCompileOutput {
     pub(crate) ignored_file_paths: Vec<PathBuf>,
     /// set minimum level of severity that is treated as an error
     pub(crate) compiler_severity_filter: Severity,
+    /// all build infos that were just compiled
+    pub(crate) builds: Builds<SolcLanguage>,
 }
 
 impl ProjectCompileOutput {
@@ -182,7 +189,7 @@ impl fmt::Display for ProjectCompileOutput {
 /// The aggregated output of (multiple) compile jobs
 ///
 /// This is effectively a solc version aware `CompilerOutput`
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AggregatedCompilerOutput {
     /// all errors from all `CompilerOutput`
     pub errors: Vec<Error>,
@@ -190,6 +197,19 @@ pub struct AggregatedCompilerOutput {
     pub sources: VersionedSourceFiles,
     /// All compiled contracts combined with the solc version used to compile them
     pub contracts: VersionedContracts,
+    // All the `BuildInfo`s of zksolc invocations.
+    pub build_infos: Vec<RawBuildInfo<SolcLanguage>>,
+}
+
+impl Default for AggregatedCompilerOutput {
+    fn default() -> Self {
+        Self {
+            errors: Vec::new(),
+            sources: Default::default(),
+            contracts: Default::default(),
+            build_infos: Default::default(),
+        }
+    }
 }
 
 impl AggregatedCompilerOutput {
@@ -273,30 +293,37 @@ impl AggregatedCompilerOutput {
         self.contracts.is_empty() && self.errors.is_empty()
     }
 
-    pub fn extend_all<I>(&mut self, out: I)
-    where
-        I: IntoIterator<Item = (Version, CompilerOutput)>,
-    {
-        for (v, o) in out {
-            self.extend(v, o)
-        }
-    }
-
     /// adds a new `CompilerOutput` to the aggregated output
-    pub fn extend(&mut self, version: Version, output: CompilerOutput) {
+    pub fn extend(
+        &mut self,
+        version: Version,
+        output: CompilerOutput,
+        build_info: RawBuildInfo<SolcLanguage>,
+    ) {
+        let build_id = build_info.id.clone();
+        self.build_infos.push(build_info);
+
         let CompilerOutput { errors, sources, contracts, .. } = output;
         self.errors.extend(errors);
 
         for (path, source_file) in sources {
             let sources = self.sources.as_mut().entry(path).or_default();
-            sources.push(VersionedSourceFile { source_file, version: version.clone() });
+            sources.push(VersionedSourceFile {
+                source_file,
+                version: version.clone(),
+                build_id: build_id.clone(),
+            });
         }
 
         for (file_name, new_contracts) in contracts {
             let contracts = self.contracts.as_mut().entry(file_name).or_default();
             for (contract_name, contract) in new_contracts {
                 let versioned = contracts.entry(contract_name).or_default();
-                versioned.push(VersionedContract { contract, version: version.clone() });
+                versioned.push(VersionedContract {
+                    contract,
+                    version: version.clone(),
+                    build_id: build_id.clone(),
+                });
             }
         }
     }
