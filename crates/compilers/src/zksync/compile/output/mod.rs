@@ -34,19 +34,19 @@ pub mod contracts;
 #[derive(Clone)]
 pub struct ProjectCompileOutput {
     /// contains the aggregated `CompilerOutput`
-    pub(crate) compiler_output: AggregatedCompilerOutput,
+    pub compiler_output: AggregatedCompilerOutput,
     /// all artifact files from `output` that were freshly compiled and written
-    pub(crate) compiled_artifacts: Artifacts<ZkContractArtifact>,
+    pub compiled_artifacts: Artifacts<ZkContractArtifact>,
     /// All artifacts that were read from cache
-    pub(crate) cached_artifacts: Artifacts<ZkContractArtifact>,
+    pub cached_artifacts: Artifacts<ZkContractArtifact>,
     /// errors that should be omitted
-    pub(crate) ignored_error_codes: Vec<u64>,
+    pub ignored_error_codes: Vec<u64>,
     /// paths that should be omitted
-    pub(crate) ignored_file_paths: Vec<PathBuf>,
+    pub ignored_file_paths: Vec<PathBuf>,
     /// set minimum level of severity that is treated as an error
-    pub(crate) compiler_severity_filter: Severity,
+    pub compiler_severity_filter: Severity,
     /// all build infos that were just compiled
-    pub(crate) builds: Builds<SolcLanguage>,
+    pub builds: Builds<SolcLanguage>,
 }
 
 impl ProjectCompileOutput {
@@ -189,7 +189,7 @@ impl fmt::Display for ProjectCompileOutput {
 /// The aggregated output of (multiple) compile jobs
 ///
 /// This is effectively a solc version aware `CompilerOutput`
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct AggregatedCompilerOutput {
     /// all errors from all `CompilerOutput`
     pub errors: Vec<Error>,
@@ -199,17 +199,6 @@ pub struct AggregatedCompilerOutput {
     pub contracts: VersionedContracts,
     // All the `BuildInfo`s of zksolc invocations.
     pub build_infos: Vec<RawBuildInfo<SolcLanguage>>,
-}
-
-impl Default for AggregatedCompilerOutput {
-    fn default() -> Self {
-        Self {
-            errors: Vec::new(),
-            sources: Default::default(),
-            contracts: Default::default(),
-            build_infos: Default::default(),
-        }
-    }
 }
 
 impl AggregatedCompilerOutput {
@@ -297,8 +286,8 @@ impl AggregatedCompilerOutput {
     pub fn extend(
         &mut self,
         version: Version,
-        output: CompilerOutput,
         build_info: RawBuildInfo<SolcLanguage>,
+        output: CompilerOutput,
     ) {
         let build_id = build_info.id.clone();
         self.build_infos.push(build_info);

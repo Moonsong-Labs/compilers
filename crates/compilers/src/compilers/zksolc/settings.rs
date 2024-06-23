@@ -115,7 +115,7 @@ impl Default for ZkSolcSettings {
 }
 
 impl CompilerSettings for ZkSolcSettings {
-    fn update_output_selection(&mut self, f: impl FnOnce(&mut OutputSelection) + Copy) {
+    fn update_output_selection(&mut self, _f: impl FnOnce(&mut OutputSelection) + Copy) {
         // TODO: see how to support this, noop for now
         //f(&mut self.output_selection)
     }
@@ -258,8 +258,8 @@ impl FromStr for BytecodeHash {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "none" => Ok(BytecodeHash::None),
-            "keccak256" => Ok(BytecodeHash::Keccak256),
+            "none" => Ok(Self::None),
+            "keccak256" => Ok(Self::Keccak256),
             s => Err(format!("Unknown bytecode hash: {s}")),
         }
     }
@@ -268,8 +268,8 @@ impl FromStr for BytecodeHash {
 impl fmt::Display for BytecodeHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            BytecodeHash::Keccak256 => "keccak256",
-            BytecodeHash::None => "none",
+            Self::Keccak256 => "keccak256",
+            Self::None => "none",
         };
         f.write_str(s)
     }

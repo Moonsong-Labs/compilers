@@ -100,7 +100,7 @@ pub struct ZkSolcInput {
 /// Default `language` field is set to `"Solidity"`.
 impl Default for ZkSolcInput {
     fn default() -> Self {
-        ZkSolcInput {
+        Self {
             language: SolcLanguage::Solidity,
             sources: Sources::default(),
             settings: ZkSolcSettings::default(),

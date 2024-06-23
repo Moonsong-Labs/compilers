@@ -48,26 +48,26 @@ fn get_operating_system() -> Result<ZkSolcOS> {
 impl ZkSolcOS {
     fn get_compiler(&self) -> &str {
         match self {
-            ZkSolcOS::Linux => "zksolc-linux-amd64-musl-",
-            ZkSolcOS::MacAMD => "zksolc-macosx-amd64-",
-            ZkSolcOS::MacARM => "zksolc-macosx-arm64-",
+            Self::Linux => "zksolc-linux-amd64-musl-",
+            Self::MacAMD => "zksolc-macosx-amd64-",
+            Self::MacARM => "zksolc-macosx-arm64-",
         }
     }
 
     fn get_solc_prefix(&self) -> &str {
         match self {
-            ZkSolcOS::Linux => "solc-linux-amd64-",
-            ZkSolcOS::MacAMD => "solc-macosx-amd64-",
-            ZkSolcOS::MacARM => "solc-macosx-arm64-",
+            Self::Linux => "solc-linux-amd64-",
+            Self::MacAMD => "solc-macosx-amd64-",
+            Self::MacARM => "solc-macosx-arm64-",
         }
     }
 
     #[cfg(feature = "async")]
     fn get_download_uri(&self) -> &str {
         match self {
-            ZkSolcOS::Linux => "linux-amd64-musl",
-            ZkSolcOS::MacAMD => "macosx-amd64",
-            ZkSolcOS::MacARM => "macosx-arm64",
+            Self::Linux => "linux-amd64-musl",
+            Self::MacAMD => "macosx-amd64",
+            Self::MacARM => "macosx-arm64",
         }
     }
 }
@@ -96,17 +96,17 @@ pub struct ZkSolc {
 impl Default for ZkSolc {
     fn default() -> Self {
         if let Ok(zksolc) = std::env::var("ZKSOLC_PATH") {
-            return ZkSolc::new(zksolc);
+            return Self::new(zksolc);
         }
 
-        ZkSolc::new(ZKSOLC)
+        Self::new(ZKSOLC)
     }
 }
 
 impl ZkSolc {
     /// A new instance which points to `zksolc`
     pub fn new(path: impl Into<PathBuf>) -> Self {
-        ZkSolc {
+        Self {
             zksolc: path.into(),
             base_path: None,
             allow_paths: Default::default(),
@@ -126,12 +126,13 @@ impl ZkSolc {
         let mut zksolc = self.clone();
         // TODO: maybe we can just override the input
         if input.input.settings.solc.is_some() {
-            zksolc.solc = input.input.settings.solc;
+            zksolc.solc = input.input.settings.solc.clone();
         } else {
-            let maybe_solc = Self::find_solc_installed_version(&format!(
+            let solc_version_without_metadata = format!(
                 "{}.{}.{}",
                 input.solc_version.major, input.solc_version.minor, input.solc_version.patch
-            ))?;
+            );
+            let maybe_solc = Self::find_solc_installed_version(&solc_version_without_metadata)?;
             if let Some(solc) = maybe_solc {
                 zksolc.solc = Some(solc);
             } else {
@@ -313,8 +314,7 @@ impl ZkSolc {
             let os = get_operating_system()?;
             let download_uri = os.get_download_uri();
             let full_download_url = format!(
-                "https://github.com/matter-labs/zksolc-bin/releases/download/v{}/zksolc-{}-v{}",
-                version, download_uri, version
+                "https://github.com/matter-labs/zksolc-bin/releases/download/v{version}/zksolc-{download_uri}-v{version}",
             );
 
             let compiler_path = Self::compiler_path(version)?;
@@ -324,26 +324,26 @@ impl ZkSolc {
                 .get(full_download_url)
                 .send()
                 .await
-                .map_err(|e| SolcError::msg(format!("Failed to download file: {}", e)))?;
+                .map_err(|e| SolcError::msg(format!("Failed to download file: {e}")))?;
 
             if response.status().is_success() {
                 let compilers_dir = Self::compilers_dir()?;
                 if !compilers_dir.exists() {
                     create_dir_all(compilers_dir).await.map_err(|e| {
-                        SolcError::msg(format!("Could not create compilers path: {}", e))
+                        SolcError::msg(format!("Could not create compilers path: {e}"))
                     })?;
                 }
                 let mut output_file = File::create(&compiler_path)
                     .await
-                    .map_err(|e| SolcError::msg(format!("Failed to create output file: {}", e)))?;
+                    .map_err(|e| SolcError::msg(format!("Failed to create output file: {e}")))?;
 
                 let content = response
                     .bytes()
                     .await
-                    .map_err(|e| SolcError::msg(format!("failed to download file: {}", e)))?;
+                    .map_err(|e| SolcError::msg(format!("failed to download file: {e}")))?;
 
                 copy(&mut content.as_ref(), &mut output_file).await.map_err(|e| {
-                    SolcError::msg(format!("Failed to write the downloaded file: {}", e))
+                    SolcError::msg(format!("Failed to write the downloaded file: {e}"))
                 })?;
 
                 set_permissions(&compiler_path, PermissionsExt::from_mode(0o755)).await.map_err(
@@ -361,7 +361,7 @@ impl ZkSolc {
         match install {
             Ok(path) => {
                 //crate::report::solc_installation_success(version);
-                Ok(ZkSolc::new(path))
+                Ok(Self::new(path))
             }
             Err(err) => {
                 //crate::report::solc_installation_error(version, &err.to_string());
@@ -383,8 +383,7 @@ impl ZkSolc {
             let os = get_operating_system()?;
             let solc_prefix = os.get_solc_prefix();
             let full_download_url = format!(
-                "https://github.com/matter-labs/era-solidity/releases/download/{}-{}/{}{}-{}",
-                version_str, ZKSYNC_SOLC_RELEASE, solc_prefix, version_str, ZKSYNC_SOLC_RELEASE
+                "https://github.com/matter-labs/era-solidity/releases/download/{version_str}-{ZKSYNC_SOLC_RELEASE}/{solc_prefix}{version_str}-{ZKSYNC_SOLC_RELEASE}",
             );
 
             let solc_path = Self::solc_path(version_str)?;
@@ -394,26 +393,26 @@ impl ZkSolc {
                 .get(full_download_url)
                 .send()
                 .await
-                .map_err(|e| SolcError::msg(format!("Failed to download file: {}", e)))?;
+                .map_err(|e| SolcError::msg(format!("Failed to download file: {e}")))?;
 
             if response.status().is_success() {
                 let compilers_dir = Self::compilers_dir()?;
                 if !compilers_dir.exists() {
                     create_dir_all(compilers_dir).await.map_err(|e| {
-                        SolcError::msg(format!("Could not create compilers path: {}", e))
+                        SolcError::msg(format!("Could not create compilers path: {e}"))
                     })?;
                 }
                 let mut output_file = File::create(&solc_path)
                     .await
-                    .map_err(|e| SolcError::msg(format!("Failed to create output file: {}", e)))?;
+                    .map_err(|e| SolcError::msg(format!("Failed to create output file: {e}")))?;
 
                 let content = response
                     .bytes()
                     .await
-                    .map_err(|e| SolcError::msg(format!("failed to download file: {}", e)))?;
+                    .map_err(|e| SolcError::msg(format!("failed to download file: {e}")))?;
 
                 copy(&mut content.as_ref(), &mut output_file).await.map_err(|e| {
-                    SolcError::msg(format!("Failed to write the downloaded file: {}", e))
+                    SolcError::msg(format!("Failed to write the downloaded file: {e}"))
                 })?;
 
                 set_permissions(&solc_path, PermissionsExt::from_mode(0o755)).await.map_err(
@@ -435,7 +434,7 @@ impl ZkSolc {
         if !zksolc.is_file() {
             return Ok(None);
         }
-        Ok(Some(ZkSolc::new(zksolc)))
+        Ok(Some(Self::new(zksolc)))
     }
 
     pub fn find_solc_installed_version(version_str: &str) -> Result<Option<PathBuf>> {
@@ -484,14 +483,13 @@ impl AsRef<Path> for ZkSolc {
 
 impl<T: Into<PathBuf>> From<T> for ZkSolc {
     fn from(zksolc: T) -> Self {
-        ZkSolc::new(zksolc.into())
+        Self::new(zksolc.into())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zksync::artifact_output::Artifact;
 
     fn zksolc() -> ZkSolc {
         ZkSolc::default()

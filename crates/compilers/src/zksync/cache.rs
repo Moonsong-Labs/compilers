@@ -505,4 +505,13 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
 
         Ok((cached_artifacts, cached_builds))
     }
+
+    /// Marks the cached entry as seen by the compiler, if it's cached.
+    pub fn compiler_seen(&mut self, file: &Path) {
+        if let ArtifactsCache::Cached(cache) = self {
+            if let Some(entry) = cache.cache.entry_mut(file) {
+                entry.seen_by_compiler = true;
+            }
+        }
+    }
 }

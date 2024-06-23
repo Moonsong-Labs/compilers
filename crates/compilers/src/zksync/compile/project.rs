@@ -9,11 +9,12 @@ use crate::{
     solc::SolcCompiler,
     zksolc::input::ZkSolcVersionedInput,
     zksync::{
+        self,
         artifact_output::zk::ZkContractArtifact,
         cache::ArtifactsCache,
         compile::output::{AggregatedCompilerOutput, ProjectCompileOutput},
     },
-    Compiler, FilteredSources, Graph, Project, Source, Sources,
+    FilteredSources, Graph, Project, Source, Sources,
 };
 use foundry_compilers_artifacts::{zksolc::CompilerOutput, SolcLanguage};
 use semver::Version;
@@ -300,9 +301,9 @@ impl CompilerSources {
         cache: &mut ArtifactsCache<'_, T>,
     ) -> FilteredCompilerSources {
         fn filtered_sources<T: ArtifactOutput>(
-            sources: VersionedSources<SolcCompiler>,
+            sources: VersionedSources<SolcLanguage>,
             cache: &mut ArtifactsCache<'_, T>,
-        ) -> VersionedFilteredSources<SolcCompiler> {
+        ) -> VersionedFilteredSources<SolcLanguage> {
             cache.remove_dirty_sources();
 
             sources
@@ -330,9 +331,7 @@ impl CompilerSources {
         }
 
         match self {
-            CompilerSources::Sequential(s) => {
-                FilteredCompilerSources::Sequential(filtered_sources(s, cache))
-            }
+            Self::Sequential(s) => FilteredCompilerSources::Sequential(filtered_sources(s, cache)),
         }
     }
 }
@@ -341,7 +340,7 @@ impl CompilerSources {
 #[derive(Debug, Clone)]
 enum FilteredCompilerSources {
     /// Compile all these sequentially
-    Sequential(VersionedFilteredSources<SolcCompiler>),
+    Sequential(VersionedFilteredSources<SolcLanguage>),
 }
 
 impl FilteredCompilerSources {
@@ -384,12 +383,18 @@ impl FilteredCompilerSources {
 
                 trace!("calling {} with {} sources {:?}", version, sources.len(), sources.keys());
 
-                let mut input =
-                    ZkSolc::Input::build(sources, opt_settings, language, version.clone())
-                        .with_base_path(project.paths.root.clone())
-                        .with_allow_paths(project.paths.allowed_paths.clone())
-                        .with_include_paths(include_paths.clone())
-                        .with_remappings(project.paths.remappings.clone());
+                let zksync_settings = project.zksync_zksolc_config.settings.clone();
+
+                let mut input = ZkSolcVersionedInput::build(
+                    sources,
+                    zksync_settings,
+                    language,
+                    version.clone(),
+                )
+                .with_base_path(project.paths.root.clone())
+                .with_allow_paths(project.paths.allowed_paths.clone())
+                .with_include_paths(include_paths.clone())
+                .with_remappings(project.paths.remappings.clone());
 
                 input.strip_prefix(project.paths.root.as_path());
 
@@ -397,7 +402,7 @@ impl FilteredCompilerSources {
             }
         }
 
-        let results = compile_sequential(&project.zksync_zksolc, &jobs);
+        let results = compile_sequential(&project.zksync_zksolc, jobs)?;
 
         let mut aggregated = AggregatedCompilerOutput::default();
 
@@ -409,7 +414,8 @@ impl FilteredCompilerSources {
                 cache.compiler_seen(file);
             }
 
-            //let build_info = RawBuildInfo::new(&input, &output, project.build_info)?;
+            // TODO: Evaluate implementing build info
+            let build_info = zksync::raw_build_info_new(&input, &output, false)?;
 
             output.retain_files(
                 actually_dirty
@@ -418,10 +424,16 @@ impl FilteredCompilerSources {
             );
             output.join_all(project.paths.root.as_path());
 
-            aggregated.extend(version.clone(), output);
+            aggregated.extend(version.clone(), build_info, output);
         }
 
         Ok(aggregated)
+    }
+
+    fn into_sources(self) -> VersionedFilteredSources<SolcLanguage> {
+        match self {
+            Self::Sequential(v) => v,
+        }
     }
 }
 

@@ -35,7 +35,6 @@ foundry-compilers-artifacts-solc = { path = "crates/artifacts/solc", version = "
 foundry-compilers-artifacts-vyper = { path = "crates/artifacts/vyper", version = "0.8.0" }
 foundry-compilers-artifacts = { path = "crates/artifacts/artifacts", version = "0.8.0" }
 foundry-compilers-core = { path = "crates/core", version = "0.8.0" }
-foundry-compilers-artifacts-zksolc = { path = "crates/artifacts/zksolc", version = "0.8.0" }
 serde = { version = "1", features = ["derive", "rc"] }
 semver = { version = "1.0", features = ["serde"] }
 serde_json = "1.0"
@@ -59,4 +58,5 @@ futures-util = "0.3"
 tokio = { version = "1.35", features = ["rt-multi-thread"] }
 
 # zksync
+foundry-compilers-artifacts-zksolc = { path = "crates/artifacts/zksolc", version = "0.8.0" }
 globset = "0.4"
