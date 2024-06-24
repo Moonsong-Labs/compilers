@@ -1,6 +1,14 @@
 use self::input::{ZkSolcInput, ZkSolcVersionedInput};
-use crate::error::{Result, SolcError};
-use foundry_compilers_artifacts::zksolc::CompilerOutput;
+use crate::{
+    error::{Result, SolcError},
+    resolver::parse::SolData,
+    CompilationError, Compiler, CompilerVersion,
+};
+use foundry_compilers_artifacts::{
+    error::SourceLocation,
+    zksolc::{error::Error, CompilerOutput},
+    Severity, SolcLanguage,
+};
 
 use itertools::Itertools;
 use semver::Version;
@@ -484,6 +492,49 @@ impl AsRef<Path> for ZkSolc {
 impl<T: Into<PathBuf>> From<T> for ZkSolc {
     fn from(zksolc: T) -> Self {
         Self::new(zksolc.into())
+    }
+}
+
+impl Compiler for ZkSolc {
+    type Input = ZkSolcVersionedInput;
+    type CompilationError = Error;
+    type ParsedSource = SolData;
+    type Settings = ZkSolcSettings;
+    type Language = SolcLanguage;
+
+    fn compile(
+        &self,
+        input: &Self::Input,
+    ) -> Result<crate::compilers::CompilerOutput<Self::CompilationError>> {
+        // This method cannot be implemented until CompilerOutput is decoupled from
+        // evm Contract
+        panic!("Not supported");
+    }
+
+    fn available_versions(&self, _language: &Self::Language) -> Vec<CompilerVersion> {
+        // TODO
+        vec![]
+    }
+}
+
+impl CompilationError for Error {
+    fn is_warning(&self) -> bool {
+        self.severity.is_warning()
+    }
+    fn is_error(&self) -> bool {
+        self.severity.is_error()
+    }
+
+    fn source_location(&self) -> Option<SourceLocation> {
+        self.source_location.clone()
+    }
+
+    fn severity(&self) -> Severity {
+        self.severity
+    }
+
+    fn error_code(&self) -> Option<u64> {
+        self.error_code
     }
 }
 
