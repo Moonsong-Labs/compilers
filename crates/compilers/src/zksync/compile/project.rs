@@ -6,7 +6,6 @@ use crate::{
     output::Builds,
     report,
     resolver::{parse::SolData, GraphEdges},
-    solc::SolcCompiler,
     zksolc::input::ZkSolcVersionedInput,
     zksync::{
         self,
@@ -32,7 +31,7 @@ pub(crate) type VersionedFilteredSources<L> = HashMap<L, HashMap<Version, Filter
 pub struct ProjectCompiler<'a, T: ArtifactOutput> {
     /// Contains the relationship of the source files and their imports
     edges: GraphEdges<SolData>,
-    project: &'a Project<SolcCompiler, T>,
+    project: &'a Project<ZkSolc, T>,
     /// how to compile all the sources
     sources: CompilerSources,
 }
@@ -40,8 +39,11 @@ pub struct ProjectCompiler<'a, T: ArtifactOutput> {
 impl<'a, T: ArtifactOutput> ProjectCompiler<'a, T> {
     /// Create a new `ProjectCompiler` to bootstrap the compilation process of the project's
     /// sources.
-    pub fn new(project: &'a Project<SolcCompiler, T>) -> Result<Self> {
-        let sources = match project.zksync_avoid_contracts {
+    pub fn new(
+        project: &'a Project<ZkSolc, T>,
+        avoid_contracts: Option<Vec<globset::GlobMatcher>>,
+    ) -> Result<Self> {
+        let sources = match avoid_contracts {
             Some(ref contracts_to_avoid) => Source::read_all(
                 project
                     .paths
@@ -60,7 +62,7 @@ impl<'a, T: ArtifactOutput> ProjectCompiler<'a, T> {
     ///
     /// Multiple (`Solc` -> `Sources`) pairs can be compiled in parallel if the `Project` allows
     /// multiple `jobs`, see [`crate::Project::set_solc_jobs()`].
-    pub fn with_sources(project: &'a Project<SolcCompiler, T>, sources: Sources) -> Result<Self> {
+    pub fn with_sources(project: &'a Project<ZkSolc, T>, sources: Sources) -> Result<Self> {
         let graph = Graph::resolve_sources(&project.paths, sources)?;
         let (sources, edges) = graph.into_sources_by_version(
             project.offline,
@@ -166,7 +168,7 @@ impl<'a, T: ArtifactOutput> CompiledState<'a, T> {
         // write all artifacts via the handler but only if the build succeeded and project wasn't
         // configured with `no_artifacts == true`
         let compiled_artifacts = if project.no_artifacts {
-            project.zksync_artifacts.output_to_artifacts(
+            project.artifacts.output_to_artifacts(
                 &output.contracts,
                 &output.sources,
                 ctx,
@@ -178,7 +180,7 @@ impl<'a, T: ArtifactOutput> CompiledState<'a, T> {
             &project.compiler_severity_filter,
         ) {
             trace!("skip writing cache file due to solc errors: {:?}", output.errors);
-            project.zksync_artifacts.output_to_artifacts(
+            project.artifacts.output_to_artifacts(
                 &output.contracts,
                 &output.sources,
                 ctx,
@@ -191,12 +193,7 @@ impl<'a, T: ArtifactOutput> CompiledState<'a, T> {
                 output.sources.len()
             );
             // this emits the artifacts via the project's artifacts handler
-            project.zksync_artifacts.on_output(
-                &output.contracts,
-                &output.sources,
-                &project.paths,
-                ctx,
-            )?
+            project.artifacts.on_output(&output.contracts, &output.sources, &project.paths, ctx)?
 
             // TODO: evaluate build info support
             // emits all the build infos, if they exist
@@ -383,7 +380,7 @@ impl FilteredCompilerSources {
 
                 trace!("calling {} with {} sources {:?}", version, sources.len(), sources.keys());
 
-                let zksync_settings = project.zksync_zksolc_config.settings.clone();
+                let zksync_settings = project.settings.clone();
 
                 let mut input = ZkSolcVersionedInput::build(
                     sources,
@@ -402,7 +399,7 @@ impl FilteredCompilerSources {
             }
         }
 
-        let results = compile_sequential(&project.zksync_zksolc, jobs)?;
+        let results = compile_sequential(&project.compiler, jobs)?;
 
         let mut aggregated = AggregatedCompilerOutput::default();
 

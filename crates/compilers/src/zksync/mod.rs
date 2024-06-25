@@ -10,8 +10,8 @@ use crate::{
     buildinfo::{BuildContext, RawBuildInfo, ETHERS_FORMAT_VERSION},
     compilers::solc::SolcCompiler,
     error::Result,
-    zksolc::input::ZkSolcVersionedInput,
-    ArtifactOutput, CompilerInput, Project, Source,
+    zksolc::{input::ZkSolcVersionedInput, ZkSolc},
+    CompilerInput, Project, Source,
 };
 
 use md5::Digest;
@@ -29,14 +29,19 @@ pub mod config;
     pub zksync_zksolc_config: ZkSolcConfig,
     pub zksync_artifacts: ZkArtifactOutput,
     pub zksync_avoid_contracts: Option<Vec<globset::GlobMatcher>>,
+/// The file name of the default cache file
+pub const ZKSYNC_SOLIDITY_FILES_CACHE_FILENAME: &str = "zksync-solidity-files-cache.json";
 */
 
-pub fn project_compile(project: &Project<SolcCompiler>) -> Result<ProjectCompileOutput> {
-    self::compile::project::ProjectCompiler::new(project)?.compile()
+pub fn project_compile(
+    project: &Project<ZkSolc>,
+    avoid_contracts: Option<Vec<globset::GlobMatcher>>,
+) -> Result<ProjectCompileOutput> {
+    self::compile::project::ProjectCompiler::new(project, avoid_contracts)?.compile()
 }
 
 pub fn project_compile_files<P, I>(
-    project: &Project<SolcCompiler>,
+    project: &Project<ZkSolc>,
     files: I,
 ) -> Result<ProjectCompileOutput>
 where

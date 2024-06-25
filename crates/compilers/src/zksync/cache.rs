@@ -9,11 +9,10 @@ use crate::{
     filter::{FilteredSources, SourceCompilationKind},
     output::Builds,
     resolver::{parse::SolData, GraphEdges},
-    solc::SolcCompiler,
     utils,
     zksolc::{settings::ZkSolcSettings, ZkSolc},
     zksync::{self, artifact_output::zk::ZkContractArtifact},
-    Graph, Project, Source,
+    CompilerSettings, Graph, Project, Source,
 };
 use foundry_compilers_artifacts::SolcLanguage;
 use semver::Version;
@@ -21,9 +20,6 @@ use std::{
     collections::{btree_map::BTreeMap, btree_set::BTreeSet, hash_map, HashMap, HashSet},
     path::{Path, PathBuf},
 };
-
-/// The file name of the default cache file
-pub const ZKSYNC_SOLIDITY_FILES_CACHE_FILENAME: &str = "zksync-solidity-files-cache.json";
 
 /// A helper abstraction over the [`SolFilesCache`] used to determine what files need to compiled
 /// and which `Artifacts` can be reused.
@@ -251,7 +247,7 @@ impl<'a, T: ArtifactOutput> ArtifactsCacheInner<'a, T> {
             return true;
         }
 
-        if !self.project.zksync_zksolc_config.settings.can_use_cached(&entry.compiler_settings) {
+        if !self.project.settings.can_use_cached(&entry.compiler_settings) {
             trace!("zksolc config not compatible");
             return true;
         }
@@ -289,18 +285,18 @@ impl<'a, T: ArtifactOutput> ArtifactsCacheInner<'a, T> {
 #[derive(Debug)]
 pub(crate) enum ArtifactsCache<'a, T: ArtifactOutput> {
     /// Cache nothing on disk
-    Ephemeral(GraphEdges<SolData>, &'a Project<SolcCompiler, T>),
+    Ephemeral(GraphEdges<SolData>, &'a Project<ZkSolc, T>),
     /// Handles the actual cached artifacts, detects artifacts that can be reused
     Cached(ArtifactsCacheInner<'a, T>),
 }
 
 impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
-    pub fn new(project: &'a Project<SolcCompiler, T>, edges: GraphEdges<SolData>) -> Result<Self> {
+    pub fn new(project: &'a Project<ZkSolc, T>, edges: GraphEdges<SolData>) -> Result<Self> {
         /// Returns the [SolFilesCache] to use
         ///
         /// Returns a new empty cache if the cache does not exist or `invalidate_cache` is set.
         fn get_cache<T: ArtifactOutput>(
-            project: &Project<SolcCompiler, T>,
+            project: &Project<ZkSolc, T>,
             invalidate_cache: bool,
         ) -> CompilerCache<ZkSolcSettings> {
             // the currently configured paths
@@ -331,7 +327,7 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
             cache.remove_missing_files();
 
             // read all artifacts
-            let cached_artifacts = if project.paths.zksync_artifacts.exists() {
+            let cached_artifacts = if project.paths.artifacts.exists() {
                 trace!("reading artifacts from cache...");
                 // if we failed to read the whole set of artifacts we use an empty set
                 let artifacts = cache.read_artifacts().unwrap_or_default();
@@ -390,7 +386,7 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
         }
     }
 
-    pub fn project(&self) -> &'a Project<SolcCompiler, T> {
+    pub fn project(&self) -> &'a Project<ZkSolc, T> {
         match self {
             ArtifactsCache::Ephemeral(_, project) => project,
             ArtifactsCache::Cached(cache) => cache.project,
@@ -483,8 +479,8 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
             // paths relative to the artifact's directory
             cache
                 .strip_entries_prefix(project.root())
-                .strip_artifact_files_prefixes(zksync::project_artifacts_path(project));
-            cache.write(zksync::project_cache_path(project))?;
+                .strip_artifact_files_prefixes(project.artifacts_path());
+            cache.write(project.cache_path())?;
         }
 
         Ok((cached_artifacts, cached_builds))
