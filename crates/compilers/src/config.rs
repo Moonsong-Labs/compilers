@@ -3,7 +3,6 @@ use crate::{
     compilers::{multi::MultiCompilerLanguage, Language},
     flatten::{collect_ordered_deps, combine_version_pragmas},
     resolver::{parse::SolData, SolImportAlias},
-    zksync::cache::ZKSYNC_SOLIDITY_FILES_CACHE_FILENAME,
     Graph,
 };
 use foundry_compilers_artifacts::{
@@ -53,11 +52,6 @@ pub struct ProjectPathsConfig<L = MultiCompilerLanguage> {
     pub allowed_paths: BTreeSet<PathBuf>,
 
     pub _l: PhantomData<L>,
-
-    /// Where to store zksolc build artifacts
-    pub zksync_artifacts: PathBuf,
-    /// Path to the zksync cache, if any
-    pub zksync_cache: PathBuf,
 }
 
 impl ProjectPathsConfig {
@@ -269,30 +263,11 @@ impl<L> ProjectPathsConfig<L> {
         }
     }
 
-    /// Returns a new [ProjectPaths] instance that contains all directories configured for this
-    /// project that are used for zksync
-    pub fn zksync_paths(&self) -> ProjectPaths {
-        ProjectPaths {
-            artifacts: self.zksync_artifacts.clone(),
-            build_infos: self.build_infos.clone(),
-            sources: self.sources.clone(),
-            tests: self.tests.clone(),
-            scripts: self.scripts.clone(),
-            libraries: self.libraries.iter().cloned().collect(),
-        }
-    }
-
     /// Same as [`paths`][ProjectPathsConfig::paths] but strips the `root` form all paths.
     ///
     /// See: [`ProjectPaths::strip_prefix_all`]
     pub fn paths_relative(&self) -> ProjectPaths {
         let mut paths = self.paths();
-        paths.strip_prefix_all(&self.root);
-        paths
-    }
-
-    pub fn zksync_paths_relative(&self) -> ProjectPaths {
-        let mut paths = self.zksync_paths();
         paths.strip_prefix_all(&self.root);
         paths
     }
@@ -562,8 +537,6 @@ impl<L> ProjectPathsConfig<L> {
             include_paths,
             allowed_paths,
             _l,
-            zksync_artifacts,
-            zksync_cache,
         } = self;
 
         ProjectPathsConfig {
@@ -579,8 +552,6 @@ impl<L> ProjectPathsConfig<L> {
             include_paths,
             allowed_paths,
             _l: PhantomData,
-            zksync_artifacts,
-            zksync_cache,
         }
     }
 
@@ -911,10 +882,6 @@ impl ProjectPathsConfigBuilder {
                 .remappings
                 .unwrap_or_else(|| libraries.iter().flat_map(Remapping::find_many).collect()),
             libraries,
-            zksync_artifacts,
-            zksync_cache: self
-                .zksync_cache
-                .unwrap_or_else(|| root.join("cache").join(ZKSYNC_SOLIDITY_FILES_CACHE_FILENAME)),
             root,
             include_paths: self.include_paths,
             allowed_paths,

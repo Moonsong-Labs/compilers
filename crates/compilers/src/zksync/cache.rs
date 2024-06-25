@@ -11,9 +11,9 @@ use crate::{
     resolver::{parse::SolData, GraphEdges},
     solc::SolcCompiler,
     utils,
-    zksolc::settings::ZkSolcSettings,
+    zksolc::{settings::ZkSolcSettings, ZkSolc},
     zksync::{self, artifact_output::zk::ZkContractArtifact},
-    CompilerSettings, Graph, Project, ProjectPathsConfig, Source,
+    Graph, Project, Source,
 };
 use foundry_compilers_artifacts::SolcLanguage;
 use semver::Version;
@@ -24,22 +24,6 @@ use std::{
 
 /// The file name of the default cache file
 pub const ZKSYNC_SOLIDITY_FILES_CACHE_FILENAME: &str = "zksync-solidity-files-cache.json";
-
-// OVERRIDES
-// Zksync specific overrides to generalized methods
-// TODO: Most of these are needed because we use dedicated paths for zksync stuff and they live
-// along the general paths in `ProjectPathsConfig`. This is pretty error prone as we need to
-// detect where the paths are used and override with the zksync ones, and they are very easy to
-// miss. A way to solve this would be to delete the zksync specific config and use a dedicated
-// `Project` instead, having helpers to create that Project from the `solc` one.
-/// Override of CompilerCache::read_joined to use zksync paths
-pub fn zksync_override_compiler_cache_read_joined<L>(
-    paths: &ProjectPathsConfig<L>,
-) -> Result<CompilerCache<ZkSolcSettings>> {
-    let mut cache = CompilerCache::read(&paths.zksync_cache)?;
-    cache.join_entries(&paths.root).join_artifacts_files(&paths.zksync_artifacts);
-    Ok(cache)
-}
 
 /// A helper abstraction over the [`SolFilesCache`] used to determine what files need to compiled
 /// and which `Artifacts` can be reused.
@@ -58,7 +42,7 @@ pub(crate) struct ArtifactsCacheInner<'a, T: ArtifactOutput> {
     pub edges: GraphEdges<SolData>,
 
     /// The project.
-    pub project: &'a Project<SolcCompiler, T>,
+    pub project: &'a Project<ZkSolc, T>,
 
     /// Files that were invalidated and removed from cache.
     /// Those are not grouped by version and purged completely.
@@ -90,7 +74,7 @@ impl<'a, T: ArtifactOutput> ArtifactsCacheInner<'a, T> {
             .unwrap_or_default(),
             content_hash: source.content_hash(),
             source_name: utils::source_name(&file, self.project.root()).into(),
-            compiler_settings: self.project.zksync_zksolc_config.settings.clone(),
+            compiler_settings: self.project.settings.clone(),
             imports,
             version_requirement: self.edges.version_requirement(&file).map(|v| v.to_string()),
             // artifacts remain empty until we received the compiler output

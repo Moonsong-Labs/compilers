@@ -108,12 +108,6 @@ pub struct Project<C: Compiler = MultiCompiler, T: ArtifactOutput = Configurable
     /// Optional sparse output filter used to optimize compilation.
     #[derivative(Debug = "ignore")]
     pub sparse_output: Option<Box<dyn FileFilter>>,
-
-    /// Where to find zksolc
-    pub zksync_zksolc: ZkSolc,
-    pub zksync_zksolc_config: ZkSolcConfig,
-    pub zksync_artifacts: ZkArtifactOutput,
-    pub zksync_avoid_contracts: Option<Vec<globset::GlobMatcher>>,
 }
 
 impl Project {
@@ -753,11 +747,6 @@ impl<C: Compiler, T: ArtifactOutput> ProjectBuilder<C, T> {
             settings: settings.unwrap_or_default(),
             locked_versions,
             sparse_output,
-
-            zksync_zksolc,
-            zksync_zksolc_config,
-            zksync_artifacts,
-            zksync_avoid_contracts,
         })
     }
 }

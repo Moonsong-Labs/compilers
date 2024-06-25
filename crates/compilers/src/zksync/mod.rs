@@ -23,15 +23,13 @@ pub mod cache;
 pub mod compile;
 pub mod config;
 
-/// Returns the path to the artifacts directory
-pub fn project_artifacts_path<T: ArtifactOutput>(project: &Project<SolcCompiler, T>) -> &PathBuf {
-    &project.paths.zksync_artifacts
-}
-
-/// Returns the path to the cache file
-pub fn project_cache_path<T: ArtifactOutput>(project: &Project<SolcCompiler, T>) -> &PathBuf {
-    &project.paths.zksync_cache
-}
+/*
+    /// Where to find zksolc
+    pub zksync_zksolc: ZkSolc,
+    pub zksync_zksolc_config: ZkSolcConfig,
+    pub zksync_artifacts: ZkArtifactOutput,
+    pub zksync_avoid_contracts: Option<Vec<globset::GlobMatcher>>,
+*/
 
 pub fn project_compile(project: &Project<SolcCompiler>) -> Result<ProjectCompileOutput> {
     self::compile::project::ProjectCompiler::new(project)?.compile()
