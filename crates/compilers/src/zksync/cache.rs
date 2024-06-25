@@ -304,10 +304,10 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
             invalidate_cache: bool,
         ) -> CompilerCache<ZkSolcSettings> {
             // the currently configured paths
-            let paths = project.paths.zksync_paths_relative();
+            let paths = project.paths.paths_relative();
 
-            if !invalidate_cache && zksync::project_cache_path(project).exists() {
-                if let Ok(cache) = zksync_override_compiler_cache_read_joined(&project.paths) {
+            if !invalidate_cache && project.cache_path().exists() {
+                if let Ok(cache) = CompilerCache::read_joined(&project.paths) {
                     if cache.paths == paths {
                         // unchanged project paths
                         return cache;
@@ -316,7 +316,7 @@ impl<'a, T: ArtifactOutput> ArtifactsCache<'a, T> {
             }
 
             // new empty cache
-            CompilerCache::<ZkSolcSettings>::new(Default::default(), paths)
+            CompilerCache::new(Default::default(), paths)
         }
 
         let cache = if project.cached {
