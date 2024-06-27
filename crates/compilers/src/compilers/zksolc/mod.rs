@@ -470,7 +470,6 @@ impl ZkSolc {
                         .and_then(|s| s.split('-').next())
                         .and_then(|s| Version::parse(s).ok())
                 })
-                //.map(|e| e.strip_prefix(solc_prefix).unwrap().split("-").get(1))
                 .collect();
             versions.sort();
             versions
