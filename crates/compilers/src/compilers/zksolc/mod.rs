@@ -504,7 +504,7 @@ impl Compiler for ZkSolc {
 
     fn compile(
         &self,
-        input: &Self::Input,
+        _input: &Self::Input,
     ) -> Result<crate::compilers::CompilerOutput<Self::CompilationError>> {
         // This method cannot be implemented until CompilerOutput is decoupled from
         // evm Contract

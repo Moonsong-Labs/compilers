@@ -747,8 +747,6 @@ pub struct ProjectPathsConfigBuilder {
     remappings: Option<Vec<Remapping>>,
     include_paths: BTreeSet<PathBuf>,
     allowed_paths: BTreeSet<PathBuf>,
-    zksync_artifacts: Option<PathBuf>,
-    zksync_cache: Option<PathBuf>,
 }
 
 impl ProjectPathsConfigBuilder {
@@ -861,9 +859,6 @@ impl ProjectPathsConfigBuilder {
         let libraries = self.libraries.unwrap_or_else(|| ProjectPathsConfig::find_libs(&root));
         let artifacts =
             self.artifacts.unwrap_or_else(|| ProjectPathsConfig::find_artifacts_dir(&root));
-        let zksync_artifacts = self
-            .zksync_artifacts
-            .unwrap_or_else(|| utils::find_fave_or_alt_path(&root, "zkout", "zkartifacts"));
 
         let mut allowed_paths = self.allowed_paths;
         // allow every contract under root by default
