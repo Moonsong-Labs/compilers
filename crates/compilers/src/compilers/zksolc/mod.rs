@@ -453,6 +453,31 @@ impl ZkSolc {
         }
         Ok(Some(solc))
     }
+
+    pub fn solc_installed_versions() -> Vec<Version> {
+        if let Ok(dir) = Self::compilers_dir() {
+            let os = get_operating_system().unwrap();
+            let solc_prefix = os.get_solc_prefix();
+            let mut versions: Vec<Version> = walkdir::WalkDir::new(dir)
+                .max_depth(1)
+                .into_iter()
+                .filter_map(std::result::Result::ok)
+                .filter(|e| e.file_type().is_file())
+                .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
+                .filter(|e| e.ends_with(&ZKSYNC_SOLC_RELEASE.to_string()))
+                .filter_map(|e| {
+                    e.strip_prefix(solc_prefix)
+                        .and_then(|s| s.split('-').next())
+                        .and_then(|s| Version::parse(s).ok())
+                })
+                //.map(|e| e.strip_prefix(solc_prefix).unwrap().split("-").get(1))
+                .collect();
+            versions.sort();
+            versions
+        } else {
+            vec![]
+        }
+    }
 }
 
 fn compile_output(output: Output, recompiled_with_dml: bool) -> Result<(Vec<u8>, bool)> {
@@ -511,6 +536,9 @@ impl Compiler for ZkSolc {
         panic!("Not supported");
     }
 
+    // NOTE: This method is used for version resolution of the compiler. The zksolc compiler
+    // is always one version (and should ideally be the latest). The versions we return here
+    // are the solc versions that will be paired with the different sources.
     fn available_versions(&self, _language: &Self::Language) -> Vec<CompilerVersion> {
         // TODO
         vec![]

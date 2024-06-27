@@ -21,16 +21,6 @@ pub mod artifact_output;
 pub mod compile;
 pub mod config;
 
-/*
-    /// Where to find zksolc
-    pub zksync_zksolc: ZkSolc,
-    pub zksync_zksolc_config: ZkSolcConfig,
-    pub zksync_artifacts: ZkArtifactOutput,
-    pub zksync_avoid_contracts: Option<Vec<globset::GlobMatcher>>,
-/// The file name of the default cache file
-pub const ZKSYNC_SOLIDITY_FILES_CACHE_FILENAME: &str = "zksync-solidity-files-cache.json";
-*/
-
 pub fn project_compile(
     project: &Project<ZkSolc, ZkArtifactOutput>,
     avoid_contracts: Option<Vec<globset::GlobMatcher>>,

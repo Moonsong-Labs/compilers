@@ -72,15 +72,7 @@ impl<'a> ProjectCompiler<'a> {
             &project.locked_versions,
             &project.compiler,
         )?;
-        /* TODO: Evaluate parallel support
-        let sources = if project.solc_jobs > 1 && sources_by_version.len() > 1 {
-            // if there are multiple different versions, and we can use multiple jobs we can compile
-            // them in parallel
-            CompilerSources::Parallel(sources_by_version, project.solc_jobs)
-        } else {
-            CompilerSources::Sequential(sources_by_version)
-        };
-        */
+
         let sources = CompilerSources::Sequential(sources);
 
         Ok(Self { edges, project, sources })
