@@ -159,7 +159,7 @@ impl ZkSolc {
         zksolc.allow_paths.clone_from(&input.allow_paths);
         zksolc.include_paths.clone_from(&input.include_paths);
 
-        let (output, recompiled_with_dml) = self.compile_output(&input.input)?;
+        let (output, recompiled_with_dml) = zksolc.compile_output(&input.input)?;
         // TODO:  We set the input's with the detect missing libraries flag
         // if recompilation was attempted so cache is stored with the right
         // input that generated the output.
@@ -180,10 +180,6 @@ impl ZkSolc {
     pub fn compile_output(&self, input: &ZkSolcInput) -> Result<(Vec<u8>, bool)> {
         let mut cmd = Command::new(&self.zksolc);
         let mut recompiled_with_dml = false;
-        if let Some(base_path) = &self.base_path {
-            cmd.current_dir(base_path);
-            cmd.arg("--base-path").arg(base_path);
-        }
 
         if !self.allow_paths.is_empty() {
             cmd.arg("--allow-paths");
