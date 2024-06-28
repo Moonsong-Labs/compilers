@@ -477,6 +477,19 @@ impl ZkSolc {
             vec![]
         }
     }
+
+    pub fn solc_available_versions() -> Vec<Version> {
+        let mut ret = vec![];
+        let min_max_patch_by_minor_versions =
+            vec![(4, 12, 26), (5, 0, 17), (6, 0, 12), (7, 0, 6), (8, 0, 26)];
+        for (minor, min_patch, max_patch) in min_max_patch_by_minor_versions {
+            for i in min_patch..=max_patch {
+                ret.push(Version::new(0, minor, i));
+            }
+        }
+
+        ret
+    }
 }
 
 fn compile_output(output: Output, recompiled_with_dml: bool) -> Result<(Vec<u8>, bool)> {
