@@ -1,6 +1,14 @@
 use self::input::{ZkSolcInput, ZkSolcVersionedInput};
-use crate::error::{Result, SolcError};
-use foundry_compilers_artifacts::zksolc::CompilerOutput;
+use crate::{
+    error::{Result, SolcError},
+    resolver::parse::SolData,
+    CompilationError, Compiler, CompilerVersion,
+};
+use foundry_compilers_artifacts::{
+    error::SourceLocation,
+    zksolc::{error::Error, CompilerOutput},
+    Severity, SolcLanguage,
+};
 
 use itertools::Itertools;
 use semver::Version;
@@ -441,6 +449,43 @@ impl ZkSolc {
         }
         Ok(Some(solc))
     }
+
+    pub fn solc_installed_versions() -> Vec<Version> {
+        if let Ok(dir) = Self::compilers_dir() {
+            let os = get_operating_system().unwrap();
+            let solc_prefix = os.get_solc_prefix();
+            let mut versions: Vec<Version> = walkdir::WalkDir::new(dir)
+                .max_depth(1)
+                .into_iter()
+                .filter_map(std::result::Result::ok)
+                .filter(|e| e.file_type().is_file())
+                .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
+                .filter(|e| e.ends_with(&ZKSYNC_SOLC_RELEASE.to_string()))
+                .filter_map(|e| {
+                    e.strip_prefix(solc_prefix)
+                        .and_then(|s| s.split('-').next())
+                        .and_then(|s| Version::parse(s).ok())
+                })
+                .collect();
+            versions.sort();
+            versions
+        } else {
+            vec![]
+        }
+    }
+
+    pub fn solc_available_versions() -> Vec<Version> {
+        let mut ret = vec![];
+        let min_max_patch_by_minor_versions =
+            vec![(4, 12, 26), (5, 0, 17), (6, 0, 12), (7, 0, 6), (8, 0, 26)];
+        for (minor, min_patch, max_patch) in min_max_patch_by_minor_versions {
+            for i in min_patch..=max_patch {
+                ret.push(Version::new(0, minor, i));
+            }
+        }
+
+        ret
+    }
 }
 
 fn compile_output(output: Output, recompiled_with_dml: bool) -> Result<(Vec<u8>, bool)> {
@@ -480,6 +525,52 @@ impl AsRef<Path> for ZkSolc {
 impl<T: Into<PathBuf>> From<T> for ZkSolc {
     fn from(zksolc: T) -> Self {
         Self::new(zksolc.into())
+    }
+}
+
+impl Compiler for ZkSolc {
+    type Input = ZkSolcVersionedInput;
+    type CompilationError = Error;
+    type ParsedSource = SolData;
+    type Settings = ZkSolcSettings;
+    type Language = SolcLanguage;
+
+    fn compile(
+        &self,
+        _input: &Self::Input,
+    ) -> Result<crate::compilers::CompilerOutput<Self::CompilationError>> {
+        // This method cannot be implemented until CompilerOutput is decoupled from
+        // evm Contract
+        panic!("Not supported");
+    }
+
+    // NOTE: This method is used for version resolution of the compiler. The zksolc compiler
+    // is always one version (and should ideally be the latest). The versions we return here
+    // are the solc versions that will be paired with the different sources.
+    fn available_versions(&self, _language: &Self::Language) -> Vec<CompilerVersion> {
+        // TODO
+        vec![]
+    }
+}
+
+impl CompilationError for Error {
+    fn is_warning(&self) -> bool {
+        self.severity.is_warning()
+    }
+    fn is_error(&self) -> bool {
+        self.severity.is_error()
+    }
+
+    fn source_location(&self) -> Option<SourceLocation> {
+        self.source_location.clone()
+    }
+
+    fn severity(&self) -> Severity {
+        self.severity
+    }
+
+    fn error_code(&self) -> Option<u64> {
+        self.error_code
     }
 }
 

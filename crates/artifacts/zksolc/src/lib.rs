@@ -1,4 +1,6 @@
-use foundry_compilers_artifacts_solc::{FileToContractsMap, SourceFile, SourceFiles};
+use foundry_compilers_artifacts_solc::{
+    CompactContractRef, FileToContractsMap, SourceFile, SourceFiles,
+};
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -12,7 +14,7 @@ pub mod error;
 pub mod output_selection;
 
 use self::bytecode::Bytecode;
-use self::contract::{CompactContractRef, Contract};
+use self::contract::Contract;
 use self::error::Error;
 
 /// file -> (contract name -> Contract)

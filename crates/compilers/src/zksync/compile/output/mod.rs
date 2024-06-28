@@ -14,12 +14,8 @@ use crate::{
 };
 use foundry_compilers_artifacts::ErrorFilter;
 use foundry_compilers_artifacts::{
-    zksolc::{
-        contract::{CompactContractRef, Contract},
-        error::Error,
-        CompilerOutput,
-    },
-    SolcLanguage,
+    zksolc::{contract::Contract, error::Error, CompilerOutput},
+    CompactContractRef, SolcLanguage,
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
