@@ -2,6 +2,7 @@ use self::input::{ZkSolcInput, ZkSolcVersionedInput};
 use crate::{
     error::{Result, SolcError},
     resolver::parse::SolData,
+    solc::Solc,
     CompilationError, Compiler, CompilerVersion,
 };
 use foundry_compilers_artifacts::{
@@ -134,7 +135,7 @@ impl ZkSolc {
         let mut zksolc = self.clone();
         // TODO: maybe we can just override the input
         if input.input.settings.solc.is_some() {
-            zksolc.solc = input.input.settings.solc.clone();
+            zksolc.solc.clone_from(&input.input.settings.solc);
         } else {
             let solc_version_without_metadata = format!(
                 "{}.{}.{}",
@@ -548,6 +549,9 @@ impl Compiler for ZkSolc {
     // is always one version (and should ideally be the latest). The versions we return here
     // are the solc versions that will be paired with the different sources.
     fn available_versions(&self, _language: &Self::Language) -> Vec<CompilerVersion> {
+        if let solc_path = self.solc.is_some() {
+            Solc::new()
+        }
         // TODO
         vec![]
     }
