@@ -463,8 +463,8 @@ fn version_from_output(output: Output) -> Result<Version> {
         version
             .split_whitespace()
             .find_map(|s| {
-                let a = s.trim_start_matches('v');
-                Version::from_str(a).ok()
+                let trimmed = s.trim_start_matches('v');
+                Version::from_str(trimmed).ok()
             })
             .ok_or_else(|| SolcError::msg("Unable to retrieve version from zksolc output"))
     } else {
