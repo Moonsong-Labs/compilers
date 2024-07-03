@@ -459,13 +459,14 @@ fn version_from_output(output: Output) -> Result<Version> {
             .filter(|l| !l.trim().is_empty())
             .last()
             .ok_or_else(|| SolcError::msg("Version not found in zksolc output"))?;
-        Ok(Version::from_str(
-            version
-                .split_whitespace()
-                .nth(4)
-                .ok_or_else(|| SolcError::msg("Unable to retrieve version from zksolc output"))?
-                .trim_start_matches('v'),
-        )?)
+
+        version
+            .split_whitespace()
+            .find_map(|s| {
+                let a = s.trim_start_matches('v');
+                Version::from_str(a).ok()
+            })
+            .ok_or_else(|| SolcError::msg("Unable to retrieve version from zksolc output"))
     } else {
         Err(SolcError::solc_output(&output))
     }
