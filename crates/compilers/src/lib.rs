@@ -113,7 +113,6 @@ pub struct Project<C: Compiler = MultiCompiler, T: ArtifactOutput = Configurable
     pub zksync_zksolc: ZkSolc,
     pub zksync_zksolc_config: ZkSolcConfig,
     pub zksync_artifacts: ZkArtifactOutput,
-    pub zksync_avoid_contracts: Option<Vec<globset::GlobMatcher>>,
 }
 
 impl Project {
@@ -498,7 +497,6 @@ pub struct ProjectBuilder<C: Compiler = MultiCompiler, T: ArtifactOutput = Confi
     /// Where to find zksolc
     zksync_zksolc: Option<ZkSolc>,
     zksync_zksolc_config: Option<ZkSolcConfig>,
-    zksync_avoid_contracts: Option<Vec<globset::GlobMatcher>>,
 }
 
 impl<C: Compiler, T: ArtifactOutput> ProjectBuilder<C, T> {
@@ -522,7 +520,6 @@ impl<C: Compiler, T: ArtifactOutput> ProjectBuilder<C, T> {
 
             zksync_zksolc: None,
             zksync_zksolc_config: None,
-            zksync_avoid_contracts: None,
         }
     }
 
@@ -678,7 +675,6 @@ impl<C: Compiler, T: ArtifactOutput> ProjectBuilder<C, T> {
 
             zksync_zksolc,
             zksync_zksolc_config,
-            zksync_avoid_contracts,
             ..
         } = self;
         ProjectBuilder {
@@ -699,7 +695,6 @@ impl<C: Compiler, T: ArtifactOutput> ProjectBuilder<C, T> {
 
             zksync_zksolc,
             zksync_zksolc_config,
-            zksync_avoid_contracts,
         }
     }
 
@@ -722,7 +717,6 @@ impl<C: Compiler, T: ArtifactOutput> ProjectBuilder<C, T> {
 
             zksync_zksolc,
             zksync_zksolc_config,
-            zksync_avoid_contracts,
         } = self;
 
         let mut paths = paths.map(Ok).unwrap_or_else(ProjectPathsConfig::current_hardhat)?;
@@ -757,7 +751,6 @@ impl<C: Compiler, T: ArtifactOutput> ProjectBuilder<C, T> {
             zksync_zksolc,
             zksync_zksolc_config,
             zksync_artifacts,
-            zksync_avoid_contracts,
         })
     }
 }

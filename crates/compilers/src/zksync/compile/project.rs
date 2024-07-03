@@ -14,7 +14,7 @@ use crate::{
         cache::ArtifactsCache,
         compile::output::{AggregatedCompilerOutput, ProjectCompileOutput},
     },
-    FilteredSources, Graph, Project, Source, Sources,
+    FilteredSources, Graph, Project, Sources,
 };
 use foundry_compilers_artifacts::{zksolc::CompilerOutput, SolcLanguage};
 use semver::Version;
@@ -41,17 +41,7 @@ impl<'a, T: ArtifactOutput> ProjectCompiler<'a, T> {
     /// Create a new `ProjectCompiler` to bootstrap the compilation process of the project's
     /// sources.
     pub fn new(project: &'a Project<SolcCompiler, T>) -> Result<Self> {
-        let sources = match project.zksync_avoid_contracts {
-            Some(ref contracts_to_avoid) => Source::read_all(
-                project
-                    .paths
-                    .input_files()
-                    .into_iter()
-                    .filter(|p| !contracts_to_avoid.iter().any(|c| c.is_match(p))),
-            )?,
-            None => project.paths.read_input_files()?,
-        };
-        Self::with_sources(project, sources)
+        Self::with_sources(project, project.paths.read_input_files()?)
     }
 
     /// Bootstraps the compilation process by resolving the dependency graph of all sources and the
