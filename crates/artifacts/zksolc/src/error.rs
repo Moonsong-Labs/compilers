@@ -1,5 +1,6 @@
 use foundry_compilers_artifacts_solc::error::{Severity, SourceLocation};
 
+use foundry_compilers_artifacts_solc::serde_helpers;
 use serde::{
     de::{self, Deserializer},
     Deserialize, Serialize,
@@ -15,7 +16,7 @@ pub struct Error {
     /// The component type.
     pub component: String,
     /// The error code.
-    #[serde(deserialize_with = "deserialize_option_u64_from_string")]
+    #[serde(default, with = "serde_helpers::display_from_str_opt")]
     pub error_code: Option<u64>,
     /// The formatted error message.
     pub formatted_message: Option<String>,
@@ -61,9 +62,13 @@ impl Error {
 }
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut short_msg = self.message.trim();
+        // TODO: Adding short msg for zksolc results in duplicate error messages.
+        // Check if this is always the case or if it would be useful to
+        // add it sometimes.
+        //let mut short_msg = self.message.trim();
         let fmtd_msg = self.formatted_message.as_deref().unwrap_or("");
 
+        /*
         if short_msg.is_empty() {
             // if the message is empty, try to extract the first line from the formatted message
             if let Some(first_line) = fmtd_msg.lines().next() {
@@ -75,13 +80,15 @@ impl fmt::Display for Error {
                 }
             }
         }
+        */
 
         // Error (XXXX): Error Message
         styled(f, self.severity.color().bold(), |f| self.fmt_severity(f))?;
-        fmt_msg(f, short_msg)?;
+        //fmt_msg(f, short_msg)?;
 
         let mut lines = fmtd_msg.lines();
 
+        /*
         // skip the first line if it contains the same message as the one we just formatted,
         // unless it also contains a source location, in which case the entire error message is an
         // old style error message, like:
@@ -91,6 +98,7 @@ impl fmt::Display for Error {
         }) {
             let _ = lines.next();
         }
+        */
 
         // format the main source location
         fmt_source_location(f, &mut lines)?;
