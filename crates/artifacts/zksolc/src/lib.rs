@@ -11,12 +11,13 @@ pub mod contract;
 pub mod error;
 pub mod output_selection;
 
-use self::bytecode::Bytecode;
-use self::contract::{CompactContractRef, Contract};
-use self::error::Error;
+use self::{
+    bytecode::Bytecode,
+    contract::{CompactContractRef, Contract},
+    error::Error,
+};
 
 /// file -> (contract name -> Contract)
-///
 pub type Contracts = FileToContractsMap<Contract>;
 
 /// Output type `solc` produces
@@ -107,7 +108,6 @@ pub struct Evm {
 
 ///
 /// The `solc --standard-json` output contract EVM extra metadata.
-///
 #[derive(Debug, Default, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtraMetadata {
@@ -118,7 +118,6 @@ pub struct ExtraMetadata {
 
 ///
 /// The `solc --standard-json` output contract EVM recursive function.
-///
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RecursiveFunction {

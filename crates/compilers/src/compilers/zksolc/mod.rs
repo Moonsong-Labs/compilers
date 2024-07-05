@@ -304,8 +304,8 @@ impl ZkSolc {
         trace!("blocking installing solc version \"{}\"", version);
         // TODO: Evaluate report support
         //crate::report::solc_installation_start(version);
-        // An async block is used because the underlying `reqwest::blocking::Client` does not behave well
-        // inside of a Tokio runtime. See: https://github.com/seanmonstar/reqwest/issues/1017
+        // An async block is used because the underlying `reqwest::blocking::Client` does not behave
+        // well inside of a Tokio runtime. See: https://github.com/seanmonstar/reqwest/issues/1017
         let install = RuntimeOrHandle::new().block_on(async {
             let os = get_operating_system()?;
             let download_uri = os.get_download_uri();

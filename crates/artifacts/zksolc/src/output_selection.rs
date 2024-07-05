@@ -4,7 +4,6 @@ use std::collections::HashSet;
 
 ///
 /// The `solc --standard-json` output selection.
-///
 #[derive(Debug, Default, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct OutputSelection {
     /// Only the 'all' wildcard is available for robustness reasons.
@@ -24,7 +23,6 @@ pub struct FileOutputSelection {
 
 ///
 /// The `solc --standard-json` expected output selection flag.
-///
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OutputSelectionFlag {
     /// The ABI JSON.

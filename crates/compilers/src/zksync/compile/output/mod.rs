@@ -8,18 +8,19 @@ use crate::{
     },
     output::Builds,
     zksync::{
-        artifact_output::{artifacts_artifacts, contract_name, zk::ZkContractArtifact},
+        artifact_output::{
+            artifacts_artifacts, artifacts_into_artifacts, contract_name, zk::ZkContractArtifact,
+        },
         compile::output::contracts::{VersionedContract, VersionedContracts},
     },
 };
-use foundry_compilers_artifacts::ErrorFilter;
 use foundry_compilers_artifacts::{
     zksolc::{
         contract::{CompactContractRef, Contract},
         error::Error,
         CompilerOutput,
     },
-    SolcLanguage,
+    ErrorFilter, SolcLanguage,
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -63,6 +64,23 @@ impl ProjectCompileOutput {
     pub fn artifact_ids(&self) -> impl Iterator<Item = (ArtifactId, &ZkContractArtifact)> {
         let Self { cached_artifacts, compiled_artifacts, .. } = self;
         artifacts_artifacts(cached_artifacts).chain(artifacts_artifacts(compiled_artifacts))
+    }
+
+    /// All artifacts together with their contract file name and name `<file name>:<name>`
+    ///
+    /// This returns a chained iterator of both cached and recompiled contract artifacts
+    pub fn into_artifacts(self) -> impl Iterator<Item = (ArtifactId, ZkContractArtifact)> {
+        let Self { cached_artifacts, compiled_artifacts, .. } = self;
+        artifacts_into_artifacts(cached_artifacts)
+            .chain(artifacts_into_artifacts(compiled_artifacts))
+    }
+
+    pub fn with_stripped_file_prefixes(mut self, base: impl AsRef<Path>) -> Self {
+        let base = base.as_ref();
+        self.cached_artifacts = self.cached_artifacts.into_stripped_file_prefixes(base);
+        self.compiled_artifacts = self.compiled_artifacts.into_stripped_file_prefixes(base);
+        self.compiler_output.strip_prefix_all(base);
+        self
     }
 
     /// Returns whether this type does not contain compiled contracts.
