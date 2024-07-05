@@ -38,6 +38,7 @@ pub struct ZkSolcSettings {
     #[serde(default)]
     pub output_selection: ZkOutputSelection,
 
+    #[serde(default)]
     pub optimizer: Optimizer,
     /// Metadata settings
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -46,15 +47,18 @@ pub struct ZkSolcSettings {
     pub libraries: Libraries,
     /// Switch to missing deployable libraries detection mode.
     /// Contracts are not compiled in this mode, and all compilation artifacts are not included.
-    #[serde(default)]
+    #[serde(default, rename = "detectMissingLibraries")]
     pub detect_missing_libraries: bool,
-
     // zksolc arguments
     /// A flag indicating whether to enable the system contract compilation mode.
-    #[serde(default)]
-    pub system_mode: bool,
-    /// A flag indicating whether to forcibly switch to the EVM legacy assembly pipeline.
-    #[serde(default)]
+    /// Whether to enable EraVM extensions.
+    #[serde(default, rename = "enableEraVMExtensions")]
+    pub enable_eravm_extensions: bool,
+    /// The extra LLVM options.
+    #[serde(default, rename = "LLVMOptions", skip_serializing_if = "Vec::is_empty")]
+    pub llvm_options: Vec<String>,
+    /// Whether to compile via EVM assembly.
+    #[serde(default, rename = "forceEVMLA")]
     pub force_evmla: bool,
     /// The path to the solc compiler to use along zksolc.
     pub solc: Option<std::path::PathBuf>,
@@ -106,9 +110,10 @@ impl Default for ZkSolcSettings {
             via_ir: None,
             libraries: Default::default(),
             remappings: Default::default(),
-            system_mode: false,
-            force_evmla: false,
             detect_missing_libraries: false,
+            enable_eravm_extensions: false,
+            llvm_options: Default::default(),
+            force_evmla: false,
             solc: None,
         }
     }

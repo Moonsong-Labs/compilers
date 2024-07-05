@@ -195,18 +195,6 @@ impl ZkSolc {
             }
         }
 
-        if input.settings.system_mode {
-            cmd.arg("--system-mode");
-        }
-
-        if input.settings.force_evmla {
-            cmd.arg("--force-evmla");
-        }
-
-        if input.settings.detect_missing_libraries {
-            cmd.arg("--detect-missing-libraries");
-        }
-
         cmd.arg("--standard-json");
         cmd.stdin(Stdio::piped()).stderr(Stdio::piped()).stdout(Stdio::piped());
 

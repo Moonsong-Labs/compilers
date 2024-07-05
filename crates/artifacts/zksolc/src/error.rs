@@ -30,20 +30,6 @@ pub struct Error {
     pub r#type: String,
 }
 
-fn deserialize_option_u64_from_string<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value_str: Option<String> = Option::deserialize(deserializer)?;
-    match value_str {
-        Some(str) => match str.parse() {
-            Ok(val) => Ok(Some(val)),
-            Err(_) => Err(de::Error::custom("Failed to parse string as u64")),
-        },
-        None => Ok(None),
-    }
-}
-
 impl Error {
     /// Returns `true` if the error is an error.
     pub const fn is_error(&self) -> bool {
