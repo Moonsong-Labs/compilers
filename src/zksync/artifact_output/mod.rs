@@ -77,6 +77,30 @@ pub fn artifacts_artifacts(
     })
 }
 
+pub fn artifacts_into_artifacts(
+    artifacts: Artifacts<ZkContractArtifact>,
+) -> impl Iterator<Item = (ArtifactId, ZkContractArtifact)> {
+    artifacts.0.into_iter().flat_map(|(file, contract_artifacts)| {
+        contract_artifacts.into_iter().flat_map(move |(_contract_name, artifacts)| {
+            let source = PathBuf::from(file.clone());
+            artifacts.into_iter().filter_map(move |artifact| {
+                contract_name(&artifact.file).map(|name| {
+                    (
+                        ArtifactId {
+                            path: PathBuf::from(&artifact.file),
+                            name,
+                            source: source.clone(),
+                            version: artifact.version,
+                        }
+                        .with_slashed_paths(),
+                        artifact.artifact,
+                    )
+                })
+            })
+        })
+    })
+}
+
 // ArtifactOutput trait methods that don't require self are
 // defined as standalone functions here (We don't redefine the
 // trait for zksolc)

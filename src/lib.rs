@@ -47,6 +47,7 @@ pub use filter::{FileFilter, TestFileFilter};
 pub mod zksync;
 use zksync::{
     artifact_output::zk::ZkArtifactOutput,
+    artifacts::StandardJsonCompilerInput as ZkStandardJsonCompilerInput,
     compile::{output::ProjectCompileOutput as ZkProjectCompileOutput, ZkSolc},
     config::ZkSolcConfig,
 };
@@ -569,6 +570,51 @@ impl<T: ArtifactOutput> Project<T> {
             .collect::<Vec<_>>();
 
         let input = StandardJsonCompilerInput::new(sources, settings);
+
+        Ok(input)
+    }
+
+    /// Returns standard-json-input to compile the target contract
+    pub fn zksync_standard_json_input(
+        &self,
+        target: impl AsRef<Path>,
+    ) -> Result<ZkStandardJsonCompilerInput> {
+        let target = target.as_ref();
+        trace!("Building zksync standard-json-input for {:?}", target);
+        let graph = Graph::resolve(&self.paths)?;
+        let target_index = graph.files().get(target).ok_or_else(|| {
+            SolcError::msg(format!("cannot resolve file at {:?}", target.display()))
+        })?;
+
+        let mut sources = Vec::new();
+        let mut unique_paths = HashSet::new();
+        let (path, source) = graph.node(*target_index).unpack();
+        unique_paths.insert(path.clone());
+        sources.push((path, source));
+        sources.extend(
+            graph
+                .all_imported_nodes(*target_index)
+                .map(|index| graph.node(index).unpack())
+                .filter(|(p, _)| unique_paths.insert(p.to_path_buf())),
+        );
+
+        let root = self.root();
+        let sources = sources
+            .into_iter()
+            .map(|(path, source)| (rebase_path(root, path), source.clone()))
+            .collect();
+
+        let mut settings = self.zksync_zksolc_config.settings.clone();
+        // strip the path to the project root from all remappings
+        settings.remappings = self
+            .paths
+            .remappings
+            .clone()
+            .into_iter()
+            .map(|r| r.into_relative(self.root()).to_relative_remapping())
+            .collect::<Vec<_>>();
+
+        let input = ZkStandardJsonCompilerInput::new(sources, settings);
 
         Ok(input)
     }

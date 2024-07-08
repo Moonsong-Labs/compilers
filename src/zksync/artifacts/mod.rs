@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
     fmt,
-    path::Path,
+    path::{Path, PathBuf},
     str::FromStr,
 };
 
@@ -146,6 +146,38 @@ impl CompilerInput {
         let base = base.as_ref();
         self.settings = self.settings.with_base_path(base);
         self.strip_prefix(base)
+    }
+}
+
+/// A `CompilerInput` representation used for verify
+///
+/// This type is an alternative `CompilerInput` but uses non-alphabetic ordering of the `sources`
+/// and instead emits the (Path -> Source) path in the same order as the pairs in the `sources`
+/// `Vec`. This is used over a map, so we can determine the order in which etherscan will display
+/// the verified contracts
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StandardJsonCompilerInput {
+    pub language: String,
+    #[serde(with = "serde_helpers::tuple_vec_map")]
+    pub sources: Vec<(PathBuf, Source)>,
+    pub settings: Settings,
+}
+
+// === impl StandardJsonCompilerInput ===
+
+impl StandardJsonCompilerInput {
+    pub fn new(sources: Vec<(PathBuf, Source)>, settings: Settings) -> Self {
+        Self { language: SOLIDITY.to_string(), sources, settings }
+    }
+
+    /// Normalizes the EVM version used in the settings to be up to the latest one
+    /// supported by the provided compiler version.
+    #[must_use]
+    pub fn normalize_evm_version(mut self, version: &Version) -> Self {
+        if let Some(evm_version) = &mut self.settings.evm_version {
+            self.settings.evm_version = evm_version.normalize_version(version);
+        }
+        self
     }
 }
 
