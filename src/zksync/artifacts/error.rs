@@ -1,9 +1,9 @@
-use crate::artifacts::error::{Severity, SourceLocation};
-
-use serde::{
-    de::{self, Deserializer},
-    Deserialize, Serialize,
+use crate::artifacts::{
+    error::{Severity, SourceLocation},
+    serde_helpers,
 };
+
+use serde::{Deserialize, Serialize};
 use std::{fmt, ops::Range};
 use yansi::{Color, Paint, Style};
 
@@ -15,7 +15,7 @@ pub struct Error {
     /// The component type.
     pub component: String,
     /// The error code.
-    #[serde(deserialize_with = "deserialize_option_u64_from_string")]
+    #[serde(default, with = "serde_helpers::display_from_str_opt")]
     pub error_code: Option<u64>,
     /// The formatted error message.
     pub formatted_message: Option<String>,
@@ -27,20 +27,6 @@ pub struct Error {
     pub source_location: Option<SourceLocation>,
     /// The error type.
     pub r#type: String,
-}
-
-fn deserialize_option_u64_from_string<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value_str: Option<String> = Option::deserialize(deserializer)?;
-    match value_str {
-        Some(str) => match str.parse() {
-            Ok(val) => Ok(Some(val)),
-            Err(_) => Err(de::Error::custom("Failed to parse string as u64")),
-        },
-        None => Ok(None),
-    }
 }
 
 impl Error {
@@ -61,9 +47,13 @@ impl Error {
 }
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut short_msg = self.message.trim();
+        // TODO: Adding short msg for zksolc results in duplicate error messages.
+        // Check if this is always the case or if it would be useful to
+        // add it sometimes.
+        //let mut short_msg = self.message.trim();
         let fmtd_msg = self.formatted_message.as_deref().unwrap_or("");
 
+        /*
         if short_msg.is_empty() {
             // if the message is empty, try to extract the first line from the formatted message
             if let Some(first_line) = fmtd_msg.lines().next() {
@@ -75,13 +65,15 @@ impl fmt::Display for Error {
                 }
             }
         }
+        */
 
         // Error (XXXX): Error Message
         styled(f, self.severity.color().style().bold(), |f| self.fmt_severity(f))?;
-        fmt_msg(f, short_msg)?;
+        //fmt_msg(f, short_msg)?;
 
         let mut lines = fmtd_msg.lines();
 
+        /*
         // skip the first line if it contains the same message as the one we just formatted,
         // unless it also contains a source location, in which case the entire error message is an
         // old style error message, like:
@@ -91,6 +83,7 @@ impl fmt::Display for Error {
         }) {
             let _ = lines.next();
         }
+        */
 
         // format the main source location
         fmt_source_location(f, &mut lines)?;

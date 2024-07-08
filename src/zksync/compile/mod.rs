@@ -220,19 +220,6 @@ impl ZkSolc {
             cmd.current_dir(base_path);
             cmd.arg("--base-path").arg(base_path);
         }
-
-        if input.settings.system_mode {
-            cmd.arg("--system-mode");
-        }
-
-        if input.settings.force_evmla {
-            cmd.arg("--force-evmla");
-        }
-
-        if input.settings.detect_missing_libraries {
-            cmd.arg("--detect-missing-libraries");
-        }
-
         // don't pass solc argument in yul mode (avoid verification)
         if !input.is_yul() {
             if let Some(solc) = &input.settings.solc {
