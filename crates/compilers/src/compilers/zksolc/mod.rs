@@ -2,7 +2,6 @@ use self::input::{ZkSolcInput, ZkSolcVersionedInput};
 use crate::{
     error::{Result, SolcError},
     resolver::parse::SolData,
-    solc::Solc,
     CompilationError, Compiler, CompilerVersion,
 };
 use foundry_compilers_artifacts::{
@@ -86,7 +85,7 @@ impl ZkSolcOS {
 /// Supports sync and async functions.
 ///
 /// By default the zksolc path is configured as follows, with descending priority:
-///   1. `ZKSOLC_PATH` environment variable
+///   1. `ZKSOLC_PATH environment variable
 ///   2. `zksolc` otherwise
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ZkSolc {
@@ -538,9 +537,11 @@ impl Compiler for ZkSolc {
     // is always one version (and should ideally be the latest). The versions we return here
     // are the solc versions that will be paired with the different sources.
     fn available_versions(&self, _language: &Self::Language) -> Vec<CompilerVersion> {
+        /*
         if let solc_path = self.solc.is_some() {
             Solc::new()
         }
+        */
         // TODO
         vec![]
     }

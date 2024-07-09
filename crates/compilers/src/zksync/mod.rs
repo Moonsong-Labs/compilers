@@ -23,9 +23,8 @@ pub mod config;
 
 pub fn project_compile(
     project: &Project<ZkSolc, ZkArtifactOutput>,
-    avoid_contracts: Option<Vec<globset::GlobMatcher>>,
 ) -> Result<ProjectCompileOutput> {
-    self::compile::project::ProjectCompiler::new(project, avoid_contracts)?.compile()
+    self::compile::project::ProjectCompiler::new(project)?.compile()
 }
 
 pub fn project_compile_files<P, I>(

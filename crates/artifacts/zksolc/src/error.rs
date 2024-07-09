@@ -1,10 +1,7 @@
 use foundry_compilers_artifacts_solc::error::{Severity, SourceLocation};
 
 use foundry_compilers_artifacts_solc::serde_helpers;
-use serde::{
-    de::{self, Deserializer},
-    Deserialize, Serialize,
-};
+use serde::{Deserialize, Serialize};
 use std::{fmt, ops::Range};
 use yansi::{Color, Style};
 
@@ -45,6 +42,7 @@ impl Error {
         self.severity.is_info()
     }
 }
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // TODO: Adding short msg for zksolc results in duplicate error messages.

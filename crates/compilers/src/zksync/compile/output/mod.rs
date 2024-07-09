@@ -16,7 +16,7 @@ use crate::{
 };
 use foundry_compilers_artifacts::{
     zksolc::{contract::Contract, error::Error, CompilerOutput},
-    CompactContractRef, SolcLanguage,
+    CompactContractRef, ErrorFilter, SolcLanguage,
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
