@@ -240,7 +240,7 @@ impl ZkArtifactOutput {
                         &taken_paths_lowercase,
                         file,
                         name,
-                        layout.artifacts.as_path(),
+                        layout.zksync_artifacts.as_path(),
                         &contract.version,
                         versioned_contracts.len() > 1,
                     );

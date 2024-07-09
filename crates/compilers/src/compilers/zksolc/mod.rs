@@ -204,18 +204,6 @@ impl ZkSolc {
             }
         }
 
-        if input.settings.system_mode {
-            cmd.arg("--system-mode");
-        }
-
-        if input.settings.force_evmla {
-            cmd.arg("--force-evmla");
-        }
-
-        if input.settings.detect_missing_libraries {
-            cmd.arg("--detect-missing-libraries");
-        }
-
         cmd.arg("--standard-json");
         cmd.stdin(Stdio::piped()).stderr(Stdio::piped()).stdout(Stdio::piped());
 
@@ -313,8 +301,8 @@ impl ZkSolc {
         trace!("blocking installing solc version \"{}\"", version);
         // TODO: Evaluate report support
         //crate::report::solc_installation_start(version);
-        // An async block is used because the underlying `reqwest::blocking::Client` does not behave well
-        // inside of a Tokio runtime. See: https://github.com/seanmonstar/reqwest/issues/1017
+        // An async block is used because the underlying `reqwest::blocking::Client` does not behave
+        // well inside of a Tokio runtime. See: https://github.com/seanmonstar/reqwest/issues/1017
         let install = RuntimeOrHandle::new().block_on(async {
             let os = get_operating_system()?;
             let download_uri = os.get_download_uri();
@@ -505,13 +493,14 @@ fn version_from_output(output: Output) -> Result<Version> {
             .filter(|l| !l.trim().is_empty())
             .last()
             .ok_or_else(|| SolcError::msg("Version not found in zksolc output"))?;
-        Ok(Version::from_str(
-            version
-                .split_whitespace()
-                .nth(3)
-                .ok_or_else(|| SolcError::msg("Unable to retrieve version from zksolc output"))?
-                .trim_start_matches('v'),
-        )?)
+
+        version
+            .split_whitespace()
+            .find_map(|s| {
+                let trimmed = s.trim_start_matches('v');
+                Version::from_str(trimmed).ok()
+            })
+            .ok_or_else(|| SolcError::msg("Unable to retrieve version from zksolc output"))
     } else {
         Err(SolcError::solc_output(&output))
     }
