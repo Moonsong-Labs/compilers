@@ -68,7 +68,7 @@ tempfile = "3.9"
 foundry-compilers-core = { workspace = true, features = ["test-utils"] }
 
 [features]
-default = ["rustls", "async", "svm-solc"]
+default = ["rustls", "async", "svm-solc", "project-util"]
 test-utils = []
 
 full = ["async", "svm-solc"]
