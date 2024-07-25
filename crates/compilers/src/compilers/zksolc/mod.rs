@@ -166,6 +166,43 @@ impl ZkSolc {
         Ok(serde_json::from_str(output)?)
     }
 
+    pub fn solc_installed_versions() -> Vec<Version> {
+        if let Ok(dir) = Self::compilers_dir() {
+            let os = get_operating_system().unwrap();
+            let solc_prefix = os.get_solc_prefix();
+            let mut versions: Vec<Version> = walkdir::WalkDir::new(dir)
+                .max_depth(1)
+                .into_iter()
+                .filter_map(std::result::Result::ok)
+                .filter(|e| e.file_type().is_file())
+                .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
+                .filter(|e| e.ends_with(&ZKSYNC_SOLC_RELEASE.to_string()))
+                .filter_map(|e| {
+                    e.strip_prefix(solc_prefix)
+                        .and_then(|s| s.split('-').next())
+                        .and_then(|s| Version::parse(s).ok())
+                })
+                .collect();
+            versions.sort();
+            versions
+        } else {
+            vec![]
+        }
+    }
+
+    pub fn solc_available_versions() -> Vec<Version> {
+        let mut ret = vec![];
+        let min_max_patch_by_minor_versions =
+            vec![(4, 12, 26), (5, 0, 17), (6, 0, 12), (7, 0, 6), (8, 0, 26)];
+        for (minor, min_patch, max_patch) in min_max_patch_by_minor_versions {
+            for i in min_patch..=max_patch {
+                ret.push(Version::new(0, minor, i));
+            }
+        }
+
+        ret
+    }
+
     /// Compiles with `--standard-json` and returns the raw `stdout` output.
     #[instrument(name = "compile", level = "debug", skip_all)]
     pub fn compile_output(&self, input: &ZkSolcInput) -> Result<Vec<u8>> {

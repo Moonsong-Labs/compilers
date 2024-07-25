@@ -1,17 +1,16 @@
 use crate::{
-    artifact_output::{ArtifactOutput, Artifacts},
+    artifact_output::Artifacts,
+    cache::ArtifactsCache,
     compilers::{zksolc::ZkSolc, CompilerInput, CompilerSettings},
     error::Result,
     filter::SparseOutputFilter,
     output::Builds,
     report,
     resolver::{parse::SolData, GraphEdges},
-    solc::SolcCompiler,
     zksolc::input::ZkSolcVersionedInput,
     zksync::{
         self,
-        artifact_output::zk::ZkContractArtifact,
-        cache::ArtifactsCache,
+        artifact_output::zk::{ZkArtifactOutput, ZkContractArtifact},
         compile::output::{AggregatedCompilerOutput, ProjectCompileOutput},
     },
     Graph, Project, Sources,
@@ -26,18 +25,18 @@ pub(crate) type VersionedSources<L> = HashMap<L, HashMap<Version, Sources>>;
 /// NOTE: We need the root ArtifactOutput because of the Project type
 /// but we are not using it to compile anything zksync related
 #[derive(Debug)]
-pub struct ProjectCompiler<'a, T: ArtifactOutput> {
+pub struct ProjectCompiler<'a> {
     /// Contains the relationship of the source files and their imports
     edges: GraphEdges<SolData>,
-    project: &'a Project<SolcCompiler, T>,
+    project: &'a Project<ZkSolc, ZkArtifactOutput>,
     /// how to compile all the sources
     sources: CompilerSources,
 }
 
-impl<'a, T: ArtifactOutput> ProjectCompiler<'a, T> {
+impl<'a> ProjectCompiler<'a> {
     /// Create a new `ProjectCompiler` to bootstrap the compilation process of the project's
     /// sources.
-    pub fn new(project: &'a Project<SolcCompiler, T>) -> Result<Self> {
+    pub fn new(project: &'a Project<ZkSolc, ZkArtifactOutput>) -> Result<Self> {
         Self::with_sources(project, project.paths.read_input_files()?)
     }
 
@@ -47,7 +46,10 @@ impl<'a, T: ArtifactOutput> ProjectCompiler<'a, T> {
     ///
     /// Multiple (`Solc` -> `Sources`) pairs can be compiled in parallel if the `Project` allows
     /// multiple `jobs`, see [`crate::Project::set_solc_jobs()`].
-    pub fn with_sources(project: &'a Project<SolcCompiler, T>, sources: Sources) -> Result<Self> {
+    pub fn with_sources(
+        project: &'a Project<ZkSolc, ZkArtifactOutput>,
+        sources: Sources,
+    ) -> Result<Self> {
         let graph = Graph::resolve_sources(&project.paths, sources)?;
         let (sources, edges) = graph.into_sources_by_version(
             project.offline,
@@ -77,7 +79,7 @@ impl<'a, T: ArtifactOutput> ProjectCompiler<'a, T> {
     /// Does basic preprocessing
     ///   - sets proper source unit names
     ///   - check cache
-    fn preprocess(self) -> Result<PreprocessedState<'a, T>> {
+    fn preprocess(self) -> Result<PreprocessedState<'a>> {
         trace!("preprocessing");
         let Self { edges, project, mut sources } = self;
 
@@ -97,17 +99,17 @@ impl<'a, T: ArtifactOutput> ProjectCompiler<'a, T> {
 ///
 /// The main reason is to debug all states individually
 #[derive(Debug)]
-struct PreprocessedState<'a, T: ArtifactOutput> {
+struct PreprocessedState<'a> {
     /// Contains all the sources to compile.
     sources: CompilerSources,
 
     /// Cache that holds `CacheEntry` objects if caching is enabled and the project is recompiled
-    cache: ArtifactsCache<'a, T>,
+    cache: ArtifactsCache<'a, ZkArtifactOutput, ZkSolc>,
 }
 
-impl<'a, T: ArtifactOutput> PreprocessedState<'a, T> {
+impl<'a> PreprocessedState<'a> {
     /// advance to the next state by compiling all sources
-    fn compile(self) -> Result<CompiledState<'a, T>> {
+    fn compile(self) -> Result<CompiledState<'a>> {
         trace!("compiling");
         let PreprocessedState { sources, mut cache } = self;
 
@@ -126,18 +128,18 @@ impl<'a, T: ArtifactOutput> PreprocessedState<'a, T> {
 
 /// Represents the state after `solc` was successfully invoked
 #[derive(Debug)]
-struct CompiledState<'a, T: ArtifactOutput> {
+struct CompiledState<'a> {
     output: AggregatedCompilerOutput,
-    cache: ArtifactsCache<'a, T>,
+    cache: ArtifactsCache<'a, ZkArtifactOutput, ZkSolc>,
 }
 
-impl<'a, T: ArtifactOutput> CompiledState<'a, T> {
+impl<'a> CompiledState<'a> {
     /// advance to the next state by handling all artifacts
     ///
     /// Writes all output contracts to disk if enabled in the `Project` and if the build was
     /// successful
     #[instrument(skip_all, name = "write-artifacts")]
-    fn write_artifacts(self) -> Result<ArtifactsState<'a, T>> {
+    fn write_artifacts(self) -> Result<ArtifactsState<'a>> {
         let CompiledState { output, cache } = self;
 
         let project = cache.project();
@@ -145,7 +147,7 @@ impl<'a, T: ArtifactOutput> CompiledState<'a, T> {
         // write all artifacts via the handler but only if the build succeeded and project wasn't
         // configured with `no_artifacts == true`
         let compiled_artifacts = if project.no_artifacts {
-            project.zksync_artifacts.output_to_artifacts(
+            project.artifacts.zksync_output_to_artifacts(
                 &output.contracts,
                 &output.sources,
                 ctx,
@@ -157,7 +159,7 @@ impl<'a, T: ArtifactOutput> CompiledState<'a, T> {
             &project.compiler_severity_filter,
         ) {
             trace!("skip writing cache file due to solc errors: {:?}", output.errors);
-            project.zksync_artifacts.output_to_artifacts(
+            project.artifacts.zksync_output_to_artifacts(
                 &output.contracts,
                 &output.sources,
                 ctx,
@@ -170,7 +172,7 @@ impl<'a, T: ArtifactOutput> CompiledState<'a, T> {
                 output.sources.len()
             );
             // this emits the artifacts via the project's artifacts handler
-            project.zksync_artifacts.on_output(
+            project.artifacts.zksync_on_output(
                 &output.contracts,
                 &output.sources,
                 &project.paths,
@@ -189,13 +191,13 @@ impl<'a, T: ArtifactOutput> CompiledState<'a, T> {
 
 /// Represents the state after all artifacts were written to disk
 #[derive(Debug)]
-struct ArtifactsState<'a, T: ArtifactOutput> {
+struct ArtifactsState<'a> {
     output: AggregatedCompilerOutput,
-    cache: ArtifactsCache<'a, T>,
+    cache: ArtifactsCache<'a, ZkArtifactOutput, ZkSolc>,
     compiled_artifacts: Artifacts<ZkContractArtifact>,
 }
 
-impl<'a, T: ArtifactOutput> ArtifactsState<'a, T> {
+impl<'a> ArtifactsState<'a> {
     /// Writes the cache file
     ///
     /// this concludes the [`Project::compile()`] statemachine
@@ -270,7 +272,7 @@ impl CompilerSources {
     }
 
     /// Filters out all sources that don't need to be compiled, see [`ArtifactsCache::filter`]
-    fn filter<T: ArtifactOutput>(&mut self, cache: &mut ArtifactsCache<'_, T>) {
+    fn filter(&mut self, cache: &mut ArtifactsCache<'_, ZkArtifactOutput, ZkSolc>) {
         cache.remove_dirty_sources();
         for versioned_sources in self.sources.values_mut() {
             for (version, sources) in versioned_sources {
@@ -286,9 +288,9 @@ impl CompilerSources {
     }
 
     /// Compiles all the files with `Solc`
-    fn compile<T: ArtifactOutput>(
+    fn compile(
         self,
-        cache: &mut ArtifactsCache<'_, T>,
+        cache: &mut ArtifactsCache<'_, ZkArtifactOutput, ZkSolc>,
     ) -> Result<AggregatedCompilerOutput> {
         let project = cache.project();
         let graph = cache.graph();
@@ -323,7 +325,6 @@ impl CompilerSources {
 
                 trace!("calling {} with {} sources {:?}", version, sources.len(), sources.keys());
                 let zksync_settings = project
-                    .zksync_zksolc_config
                     .settings
                     .clone()
                     .with_base_path(&project.paths.root)
@@ -344,7 +345,7 @@ impl CompilerSources {
             }
         }
 
-        let results = compile_sequential(&project.zksync_zksolc, jobs)?;
+        let results = compile_sequential(&project.compiler, jobs)?;
 
         let mut aggregated = AggregatedCompilerOutput::default();
 

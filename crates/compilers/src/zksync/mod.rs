@@ -8,37 +8,27 @@ use foundry_compilers_artifacts::{zksolc::CompilerOutput, SolcLanguage};
 
 use crate::{
     buildinfo::{BuildContext, RawBuildInfo, ETHERS_FORMAT_VERSION},
-    compilers::solc::SolcCompiler,
     error::Result,
-    zksolc::input::ZkSolcVersionedInput,
-    ArtifactOutput, CompilerInput, Project, Source,
+    zksolc::{input::ZkSolcVersionedInput, ZkSolc},
+    CompilerInput, Project, Source,
 };
 
 use md5::Digest;
 
-use self::compile::output::ProjectCompileOutput;
+use self::{artifact_output::zk::ZkArtifactOutput, compile::output::ProjectCompileOutput};
 
 pub mod artifact_output;
-pub mod cache;
 pub mod compile;
 pub mod config;
 
-/// Returns the path to the artifacts directory
-pub fn project_artifacts_path<T: ArtifactOutput>(project: &Project<SolcCompiler, T>) -> &PathBuf {
-    &project.paths.zksync_artifacts
-}
-
-/// Returns the path to the cache file
-pub fn project_cache_path<T: ArtifactOutput>(project: &Project<SolcCompiler, T>) -> &PathBuf {
-    &project.paths.zksync_cache
-}
-
-pub fn project_compile(project: &Project<SolcCompiler>) -> Result<ProjectCompileOutput> {
+pub fn project_compile(
+    project: &Project<ZkSolc, ZkArtifactOutput>,
+) -> Result<ProjectCompileOutput> {
     self::compile::project::ProjectCompiler::new(project)?.compile()
 }
 
 pub fn project_compile_files<P, I>(
-    project: &Project<SolcCompiler>,
+    project: &Project<ZkSolc, ZkArtifactOutput>,
     files: I,
 ) -> Result<ProjectCompileOutput>
 where

@@ -15,11 +15,8 @@ use crate::{
     },
 };
 use foundry_compilers_artifacts::{
-    zksolc::{
-        contract::{CompactContractRef, Contract},
-        error::Error,
-        CompilerOutput,
-    },
+    solc::CompactContractRef,
+    zksolc::{contract::Contract, error::Error, CompilerOutput},
     ErrorFilter, SolcLanguage,
 };
 use semver::Version;
