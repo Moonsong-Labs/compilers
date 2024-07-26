@@ -1,7 +1,7 @@
 use crate::{
     artifact_output::Artifacts,
     cache::ArtifactsCache,
-    compilers::{zksolc::ZkSolc, CompilerInput, CompilerSettings},
+    compilers::{zksolc::ZkSolcCompiler, CompilerInput, CompilerSettings},
     error::Result,
     filter::SparseOutputFilter,
     output::Builds,
@@ -28,7 +28,7 @@ pub(crate) type VersionedSources<L> = HashMap<L, HashMap<Version, Sources>>;
 pub struct ProjectCompiler<'a> {
     /// Contains the relationship of the source files and their imports
     edges: GraphEdges<SolData>,
-    project: &'a Project<ZkSolc, ZkArtifactOutput>,
+    project: &'a Project<ZkSolcCompiler, ZkArtifactOutput>,
     /// how to compile all the sources
     sources: CompilerSources,
 }
@@ -36,7 +36,7 @@ pub struct ProjectCompiler<'a> {
 impl<'a> ProjectCompiler<'a> {
     /// Create a new `ProjectCompiler` to bootstrap the compilation process of the project's
     /// sources.
-    pub fn new(project: &'a Project<ZkSolc, ZkArtifactOutput>) -> Result<Self> {
+    pub fn new(project: &'a Project<ZkSolcCompiler, ZkArtifactOutput>) -> Result<Self> {
         Self::with_sources(project, project.paths.read_input_files()?)
     }
 
@@ -47,7 +47,7 @@ impl<'a> ProjectCompiler<'a> {
     /// Multiple (`Solc` -> `Sources`) pairs can be compiled in parallel if the `Project` allows
     /// multiple `jobs`, see [`crate::Project::set_solc_jobs()`].
     pub fn with_sources(
-        project: &'a Project<ZkSolc, ZkArtifactOutput>,
+        project: &'a Project<ZkSolcCompiler, ZkArtifactOutput>,
         sources: Sources,
     ) -> Result<Self> {
         let graph = Graph::resolve_sources(&project.paths, sources)?;
@@ -104,7 +104,7 @@ struct PreprocessedState<'a> {
     sources: CompilerSources,
 
     /// Cache that holds `CacheEntry` objects if caching is enabled and the project is recompiled
-    cache: ArtifactsCache<'a, ZkArtifactOutput, ZkSolc>,
+    cache: ArtifactsCache<'a, ZkArtifactOutput, ZkSolcCompiler>,
 }
 
 impl<'a> PreprocessedState<'a> {
@@ -130,7 +130,7 @@ impl<'a> PreprocessedState<'a> {
 #[derive(Debug)]
 struct CompiledState<'a> {
     output: AggregatedCompilerOutput,
-    cache: ArtifactsCache<'a, ZkArtifactOutput, ZkSolc>,
+    cache: ArtifactsCache<'a, ZkArtifactOutput, ZkSolcCompiler>,
 }
 
 impl<'a> CompiledState<'a> {
@@ -193,7 +193,7 @@ impl<'a> CompiledState<'a> {
 #[derive(Debug)]
 struct ArtifactsState<'a> {
     output: AggregatedCompilerOutput,
-    cache: ArtifactsCache<'a, ZkArtifactOutput, ZkSolc>,
+    cache: ArtifactsCache<'a, ZkArtifactOutput, ZkSolcCompiler>,
     compiled_artifacts: Artifacts<ZkContractArtifact>,
 }
 
@@ -272,7 +272,7 @@ impl CompilerSources {
     }
 
     /// Filters out all sources that don't need to be compiled, see [`ArtifactsCache::filter`]
-    fn filter(&mut self, cache: &mut ArtifactsCache<'_, ZkArtifactOutput, ZkSolc>) {
+    fn filter(&mut self, cache: &mut ArtifactsCache<'_, ZkArtifactOutput, ZkSolcCompiler>) {
         cache.remove_dirty_sources();
         for versioned_sources in self.sources.values_mut() {
             for (version, sources) in versioned_sources {
@@ -290,7 +290,7 @@ impl CompilerSources {
     /// Compiles all the files with `Solc`
     fn compile(
         self,
-        cache: &mut ArtifactsCache<'_, ZkArtifactOutput, ZkSolc>,
+        cache: &mut ArtifactsCache<'_, ZkArtifactOutput, ZkSolcCompiler>,
     ) -> Result<AggregatedCompilerOutput> {
         let project = cache.project();
         let graph = cache.graph();
@@ -376,7 +376,7 @@ impl CompilerSources {
 
 /// Compiles the input set sequentially and returns an aggregated set of the solc `CompilerOutput`s
 fn compile_sequential(
-    zksolc: &ZkSolc,
+    zksolc: &ZkSolcCompiler,
     jobs: Vec<(ZkSolcVersionedInput, Vec<PathBuf>)>,
 ) -> Result<Vec<(ZkSolcVersionedInput, CompilerOutput, Vec<PathBuf>)>> {
     jobs.into_iter()
@@ -387,7 +387,7 @@ fn compile_sequential(
                 input.version(),
                 actually_dirty.as_slice(),
             );
-            let output = zksolc.compile(&input)?;
+            let output = zksolc.zksync_compile(&input)?;
             report::compiler_success(&input.compiler_name(), input.version(), &start.elapsed());
 
             Ok((input, output, actually_dirty))

@@ -9,7 +9,7 @@ use foundry_compilers_artifacts::{zksolc::CompilerOutput, SolcLanguage};
 use crate::{
     buildinfo::{BuildContext, RawBuildInfo, ETHERS_FORMAT_VERSION},
     error::Result,
-    zksolc::{input::ZkSolcVersionedInput, ZkSolc},
+    zksolc::{input::ZkSolcVersionedInput, ZkSolcCompiler},
     CompilerInput, Project, Source,
 };
 
@@ -22,13 +22,13 @@ pub mod compile;
 pub mod config;
 
 pub fn project_compile(
-    project: &Project<ZkSolc, ZkArtifactOutput>,
+    project: &Project<ZkSolcCompiler, ZkArtifactOutput>,
 ) -> Result<ProjectCompileOutput> {
     self::compile::project::ProjectCompiler::new(project)?.compile()
 }
 
 pub fn project_compile_files<P, I>(
-    project: &Project<ZkSolc, ZkArtifactOutput>,
+    project: &Project<ZkSolcCompiler, ZkArtifactOutput>,
     files: I,
 ) -> Result<ProjectCompileOutput>
 where

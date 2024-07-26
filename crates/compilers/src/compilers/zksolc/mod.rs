@@ -2,6 +2,7 @@ use self::input::{ZkSolcInput, ZkSolcVersionedInput};
 use crate::{
     error::{Result, SolcError},
     resolver::parse::SolData,
+    solc::SolcCompiler,
     CompilationError, Compiler, CompilerVersion,
 };
 use foundry_compilers_artifacts::{
@@ -80,6 +81,70 @@ impl ZkSolcOS {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ZkSolcCompiler {
+    pub zksolc: PathBuf,
+    pub solc: SolcCompiler,
+}
+
+impl Compiler for ZkSolcCompiler {
+    type Input = ZkSolcVersionedInput;
+    type CompilationError = Error;
+    type ParsedSource = SolData;
+    type Settings = ZkSolcSettings;
+    type Language = SolcLanguage;
+
+    fn compile(
+        &self,
+        _input: &Self::Input,
+    ) -> Result<crate::compilers::CompilerOutput<Self::CompilationError>> {
+        // This method cannot be implemented until CompilerOutput is decoupled from
+        // evm Contract
+        panic!("Not supported");
+    }
+
+    // NOTE: This is used in the context of matching source files to compiler version so
+    // the solc are returned
+    fn available_versions(&self, _language: &Self::Language) -> Vec<CompilerVersion> {
+        // TODO
+        vec![]
+    }
+}
+
+impl ZkSolcCompiler {
+    pub fn zksync_compile(&self, input: &ZkSolcVersionedInput) -> Result<CompilerOutput> {
+        let mut zksolc = ZkSolc::new(self.zksolc.clone());
+
+        match &self.solc {
+            SolcCompiler::Specific(solc) => zksolc.solc = Some(solc.solc.clone()),
+            SolcCompiler::AutoDetect => {
+                let solc_version_without_metadata = format!(
+                    "{}.{}.{}",
+                    input.solc_version.major, input.solc_version.minor, input.solc_version.patch
+                );
+                let maybe_solc =
+                    ZkSolc::find_solc_installed_version(&solc_version_without_metadata)?;
+                if let Some(solc) = maybe_solc {
+                    zksolc.solc = Some(solc);
+                } else {
+                    #[cfg(feature = "async")]
+                    {
+                        let installed_solc_path =
+                            ZkSolc::solc_blocking_install(&solc_version_without_metadata)?;
+                        zksolc.solc = Some(installed_solc_path);
+                    }
+                }
+            }
+        }
+
+        zksolc.base_path.clone_from(&input.base_path);
+        zksolc.allow_paths.clone_from(&input.allow_paths);
+        zksolc.include_paths.clone_from(&input.include_paths);
+
+        zksolc.compile(&input.input)
+    }
+}
+
 /// Abstraction over `zksolc` command line utility
 ///
 /// Supports sync and async functions.
@@ -130,36 +195,8 @@ impl ZkSolc {
     }
 
     /// Compiles with `--standard-json` and deserializes the output as [`CompilerOutput`].
-    pub fn compile(&self, input: &ZkSolcVersionedInput) -> Result<CompilerOutput> {
-        let mut zksolc = self.clone();
-        // TODO: maybe we can just override the input
-        if input.input.settings.solc.is_some() {
-            zksolc.solc.clone_from(&input.input.settings.solc);
-        } else {
-            let solc_version_without_metadata = format!(
-                "{}.{}.{}",
-                input.solc_version.major, input.solc_version.minor, input.solc_version.patch
-            );
-            let maybe_solc = Self::find_solc_installed_version(&solc_version_without_metadata)?;
-            if let Some(solc) = maybe_solc {
-                zksolc.solc = Some(solc);
-            } else {
-                // TODO: respect offline settings although it requires moving where we
-                // check and get zksolc solc pathj
-                #[cfg(feature = "async")]
-                {
-                    let installed_solc_path =
-                        Self::solc_blocking_install(&solc_version_without_metadata)?;
-                    zksolc.solc = Some(installed_solc_path);
-                }
-            }
-        }
-
-        zksolc.base_path.clone_from(&input.base_path);
-        zksolc.allow_paths.clone_from(&input.allow_paths);
-        zksolc.include_paths.clone_from(&input.include_paths);
-
-        let output = zksolc.compile_output(&input.input)?;
+    pub fn compile(&self, input: &ZkSolcInput) -> Result<CompilerOutput> {
+        let output = self.compile_output(input)?;
         // Only run UTF-8 validation once.
         let output = std::str::from_utf8(&output).map_err(|_| SolcError::InvalidUtf8)?;
 
@@ -481,28 +518,6 @@ impl AsRef<Path> for ZkSolc {
 impl<T: Into<PathBuf>> From<T> for ZkSolc {
     fn from(zksolc: T) -> Self {
         Self::new(zksolc.into())
-    }
-}
-
-impl Compiler for ZkSolc {
-    type Input = ZkSolcVersionedInput;
-    type CompilationError = Error;
-    type ParsedSource = SolData;
-    type Settings = ZkSolcSettings;
-    type Language = SolcLanguage;
-
-    fn compile(
-        &self,
-        _input: &Self::Input,
-    ) -> Result<crate::compilers::CompilerOutput<Self::CompilationError>> {
-        // This method cannot be implemented until CompilerOutput is decoupled from
-        // evm Contract
-        panic!("Not supported");
-    }
-
-    fn available_versions(&self, _language: &Self::Language) -> Vec<CompilerVersion> {
-        // TODO
-        vec![]
     }
 }
 
