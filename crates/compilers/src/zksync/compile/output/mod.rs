@@ -19,6 +19,7 @@ use foundry_compilers_artifacts::{
     zksolc::{contract::Contract, error::Error, CompilerOutput},
     ErrorFilter, SolcLanguage,
 };
+use foundry_compilers_core::error::{SolcError, SolcIoError};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -29,7 +30,7 @@ use yansi::Paint;
 
 pub mod contracts;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ProjectCompileOutput {
     /// contains the aggregated `CompilerOutput`
     pub compiler_output: AggregatedCompilerOutput,
@@ -94,6 +95,12 @@ impl ProjectCompileOutput {
         )
     }
 
+    /// Panics if any errors were emitted by the compiler.
+    #[track_caller]
+    pub fn assert_success(&self) {
+        assert!(!self.has_compiler_errors(), "\n{self}\n");
+    }
+
     pub fn versioned_artifacts(
         &self,
     ) -> impl Iterator<Item = (String, (&ZkContractArtifact, &Version))> {
@@ -124,6 +131,14 @@ impl ProjectCompileOutput {
             return artifact;
         }
         self.cached_artifacts.find(path, name)
+    }
+
+    /// Finds the first contract with the given name
+    pub fn find_first(&self, name: &str) -> Option<&ZkContractArtifact> {
+        if let artifact @ Some(_) = self.compiled_artifacts.find_first(name) {
+            return artifact;
+        }
+        self.cached_artifacts.find_first(name)
     }
 
     /// Returns the set of `Artifacts` that were cached and got reused during
@@ -318,6 +333,28 @@ impl AggregatedCompilerOutput {
                 });
             }
         }
+    }
+
+    /// Creates all `BuildInfo` files in the given `build_info_dir`
+    ///
+    /// There can be multiple `BuildInfo`, since we support multiple versions.
+    ///
+    /// The created files have the md5 hash `{_format,solcVersion,solcLongVersion,input}` as their
+    /// file name
+    pub fn write_build_infos(&self, build_info_dir: &Path) -> Result<(), SolcError> {
+        if self.build_infos.is_empty() {
+            return Ok(());
+        }
+        std::fs::create_dir_all(build_info_dir)
+            .map_err(|err| SolcIoError::new(err, build_info_dir))?;
+        for build_info in &self.build_infos {
+            trace!("writing build info file {}", build_info.id);
+            let file_name = format!("{}.json", build_info.id);
+            let file = build_info_dir.join(file_name);
+            std::fs::write(&file, &serde_json::to_string(build_info)?)
+                .map_err(|err| SolcIoError::new(err, file))?;
+        }
+        Ok(())
     }
 
     /// Finds the _first_ contract with the given name

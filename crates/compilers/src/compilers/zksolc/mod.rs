@@ -35,6 +35,7 @@ use tokio::{
 
 pub const ZKSOLC: &str = "zksolc";
 pub const ZKSYNC_SOLC_RELEASE: Version = Version::new(1, 0, 1);
+pub const ZKSOLC_VERSION: Version = Version::new(1, 5, 1);
 
 #[derive(Debug, Clone, Serialize)]
 enum ZkSolcOS {
@@ -71,7 +72,6 @@ impl ZkSolcOS {
         }
     }
 
-    #[cfg(feature = "async")]
     fn get_download_uri(&self) -> &str {
         match self {
             Self::Linux => "linux-amd64-musl",
@@ -87,6 +87,14 @@ pub struct ZkSolcCompiler {
     pub solc: SolcCompiler,
 }
 
+#[cfg(feature = "project-util")]
+impl Default for ZkSolcCompiler {
+    fn default() -> Self {
+        let zksolc = ZkSolc::new_from_version(&ZKSOLC_VERSION).expect("Could not install zksolc");
+        Self { zksolc: zksolc.zksolc, solc: Default::default() }
+    }
+}
+
 impl Compiler for ZkSolcCompiler {
     type Input = ZkSolcVersionedInput;
     type CompilationError = Error;
@@ -100,14 +108,42 @@ impl Compiler for ZkSolcCompiler {
     ) -> Result<crate::compilers::CompilerOutput<Self::CompilationError>> {
         // This method cannot be implemented until CompilerOutput is decoupled from
         // evm Contract
-        panic!("Not supported");
+        panic!(
+            "`Compiler::create` not supported for `ZkSolcCompiler`, should call `zksync_compile`."
+        );
     }
 
     // NOTE: This is used in the context of matching source files to compiler version so
-    // the solc are returned
+    // the solc versions are returned
     fn available_versions(&self, _language: &Self::Language) -> Vec<CompilerVersion> {
-        // TODO
-        vec![]
+        match &self.solc {
+            SolcCompiler::Specific(solc) => vec![CompilerVersion::Installed(Version::new(
+                solc.version.major,
+                solc.version.minor,
+                solc.version.patch,
+            ))],
+            SolcCompiler::AutoDetect => {
+                let mut all_versions = ZkSolc::solc_installed_versions()
+                    .into_iter()
+                    .map(CompilerVersion::Installed)
+                    .collect::<Vec<_>>();
+                let mut uniques = all_versions
+                    .iter()
+                    .map(|v| {
+                        let v = v.as_ref();
+                        (v.major, v.minor, v.patch)
+                    })
+                    .collect::<std::collections::HashSet<_>>();
+                all_versions.extend(
+                    ZkSolc::solc_available_versions()
+                        .into_iter()
+                        .filter(|v| uniques.insert((v.major, v.minor, v.patch)))
+                        .map(CompilerVersion::Remote),
+                );
+                all_versions.sort_unstable();
+                all_versions
+            }
+        }
     }
 }
 
@@ -118,6 +154,9 @@ impl ZkSolcCompiler {
         match &self.solc {
             SolcCompiler::Specific(solc) => zksolc.solc = Some(solc.solc.clone()),
             SolcCompiler::AutoDetect => {
+                #[cfg(test)]
+                crate::take_solc_installer_lock!(_lock);
+
                 let solc_version_without_metadata = format!(
                     "{}.{}.{}",
                     input.solc_version.major, input.solc_version.minor, input.solc_version.patch
@@ -185,6 +224,16 @@ impl ZkSolc {
             allow_paths: Default::default(),
             include_paths: Default::default(),
             solc: None,
+        }
+    }
+
+    pub fn new_from_version(version: &Version) -> Result<Self> {
+        let maybe_zksolc = Self::find_installed_version(version)?;
+
+        if let Some(zksolc) = maybe_zksolc {
+            Ok(zksolc)
+        } else {
+            Self::blocking_install(version)
         }
     }
 
@@ -333,7 +382,7 @@ impl ZkSolc {
     }
 
     /// Install zksolc version and block the thread
-    // TODO: Maybe this (and the whole module) goes behind a zksync feature installed
+    // TODO: Maybe this (and the whole module) goes behind a zksync feature
     #[cfg(feature = "async")]
     pub fn blocking_install(version: &Version) -> Result<Self> {
         use crate::utils::RuntimeOrHandle;
@@ -547,7 +596,20 @@ mod tests {
     use super::*;
 
     fn zksolc() -> ZkSolc {
-        ZkSolc::default()
+        let mut zksolc = ZkSolc::new_from_version(&ZKSOLC_VERSION).unwrap();
+        let solc_version = "0.8.26";
+
+        crate::take_solc_installer_lock!(_lock);
+        let maybe_solc = ZkSolc::find_solc_installed_version(solc_version).unwrap();
+        if let Some(solc) = maybe_solc {
+            zksolc.solc = Some(solc);
+        } else {
+            {
+                let installed_solc_path = ZkSolc::solc_blocking_install(solc_version).unwrap();
+                zksolc.solc = Some(installed_solc_path);
+            }
+        }
+        zksolc
     }
 
     #[test]
@@ -555,39 +617,37 @@ mod tests {
         zksolc().version().unwrap();
     }
 
-    /*
     #[test]
     fn zksolc_compile_works() {
         let input = include_str!("../../../../../test-data/zksync/in/compiler-in-1.json");
-        let mut input: ZkSolcInput = serde_json::from_str(input).unwrap();
-        let out = zksolc().compile(&mut input).unwrap();
+        let input: ZkSolcInput = serde_json::from_str(input).unwrap();
+        let out = zksolc().compile(&input).unwrap();
         assert!(!out.has_error());
     }
 
     #[test]
     fn zksolc_can_compile_with_remapped_links() {
-        let mut input: ZkSolcInput = serde_json::from_str(include_str!(
+        let input: ZkSolcInput = serde_json::from_str(include_str!(
             "../../../../../test-data/zksync/library-remapping-in.json"
         ))
         .unwrap();
-        let out = zksolc().compile(&mut input).unwrap();
+        let out = zksolc().compile(&input).unwrap();
         let (_, mut contracts) = out.split();
         let contract = contracts.remove("LinkTest").unwrap();
-        let bytecode = &contract.get_bytecode().unwrap().object;
+        let bytecode = &contract.evm.unwrap().bytecode.unwrap().object;
         assert!(!bytecode.is_unlinked());
     }
 
     #[test]
     fn zksolc_can_compile_with_remapped_links_temp_dir() {
-        let mut input: ZkSolcInput = serde_json::from_str(include_str!(
+        let input: ZkSolcInput = serde_json::from_str(include_str!(
             "../../../../../test-data/zksync/library-remapping-in-2.json"
         ))
         .unwrap();
-        let out = zksolc().compile(&mut input).unwrap();
+        let out = zksolc().compile(&input).unwrap();
         let (_, mut contracts) = out.split();
         let contract = contracts.remove("LinkTest").unwrap();
-        let bytecode = &contract.get_bytecode().unwrap().object;
+        let bytecode = &contract.evm.unwrap().bytecode.unwrap().object;
         assert!(!bytecode.is_unlinked());
     }
-    */
 }

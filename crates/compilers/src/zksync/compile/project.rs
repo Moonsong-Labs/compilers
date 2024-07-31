@@ -172,17 +172,17 @@ impl<'a> CompiledState<'a> {
                 output.sources.len()
             );
             // this emits the artifacts via the project's artifacts handler
-            project.artifacts.zksync_on_output(
+            let artifacts = project.artifacts.zksync_on_output(
                 &output.contracts,
                 &output.sources,
                 &project.paths,
                 ctx,
-            )?
+            )?;
 
-            // TODO: evaluate build info support
             // emits all the build infos, if they exist
-            //output.write_build_infos(project.build_info_path())?;
-            //artifacts
+            output.write_build_infos(project.build_info_path())?;
+
+            artifacts
         };
 
         Ok(ArtifactsState { output, cache, compiled_artifacts })
@@ -209,9 +209,6 @@ impl<'a> ArtifactsState<'a> {
         let compiler_severity_filter = project.compiler_severity_filter;
         let has_error =
             output.has_error(&ignored_error_codes, &ignored_file_paths, &compiler_severity_filter);
-        // TODO: We do not write cache that was recompiled with --detect-missing-libraries as
-        // settings won't match the project's zksolc settings. Ideally we would update the
-        // corresponding cache entries adding that setting
         let skip_write_to_disk = project.no_artifacts || has_error;
         trace!(has_error, project.no_artifacts, skip_write_to_disk, cache_path=?project.cache_path(),"prepare writing cache file");
 
@@ -357,8 +354,7 @@ impl CompilerSources {
                 cache.compiler_seen(file);
             }
 
-            // TODO: Evaluate implementing build info
-            let build_info = zksync::raw_build_info_new(&input, &output, false)?;
+            let build_info = zksync::raw_build_info_new(&input, &output, project.build_info)?;
 
             output.retain_files(
                 actually_dirty
