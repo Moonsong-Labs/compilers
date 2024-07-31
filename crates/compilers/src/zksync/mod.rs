@@ -19,7 +19,6 @@ use self::{artifact_output::zk::ZkArtifactOutput, compile::output::ProjectCompil
 
 pub mod artifact_output;
 pub mod compile;
-pub mod config;
 
 pub fn project_compile(
     project: &Project<ZkSolcCompiler, ZkArtifactOutput>,
