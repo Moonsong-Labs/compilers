@@ -22,8 +22,6 @@ use std::{collections::HashMap, path::PathBuf, time::Instant};
 /// A set of different Solc installations with their version and the sources to be compiled
 pub(crate) type VersionedSources<L> = HashMap<L, HashMap<Version, Sources>>;
 
-/// NOTE: We need the root ArtifactOutput because of the Project type
-/// but we are not using it to compile anything zksync related
 #[derive(Debug)]
 pub struct ProjectCompiler<'a> {
     /// Contains the relationship of the source files and their imports
