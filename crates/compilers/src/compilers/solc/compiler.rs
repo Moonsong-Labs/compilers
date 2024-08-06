@@ -37,9 +37,7 @@ macro_rules! take_solc_installer_lock {
             .open(lock_path)
             .unwrap();
         let mut lock = fd_lock::RwLock::new(lock_file);
-        println!("taking the lock");
         let $lock = lock.write().unwrap();
-        println!("got the lock")
     };
 }
 
