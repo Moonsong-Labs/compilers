@@ -60,7 +60,7 @@ impl CompilerInput for ZkSolcVersionedInput {
     }
 
     fn compiler_name(&self) -> Cow<'static, str> {
-        "ZkSolc".into()
+        "zksolc and solc".into()
     }
 
     fn strip_prefix(&mut self, base: &Path) {
