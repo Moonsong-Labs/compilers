@@ -112,7 +112,7 @@ impl ArtifactOutput for ZkArtifactOutput {
         _contract: foundry_compilers_artifacts::Contract,
         _source_file: Option<&SourceFile>,
     ) -> Self::Artifact {
-        panic!("Unsupported");
+        panic!("Unsupported use zksync_contract_to_artifact instead");
     }
 
     fn standalone_source_file_to_artifact(
