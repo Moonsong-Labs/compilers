@@ -124,7 +124,7 @@ impl<'a> PreprocessedState<'a> {
     }
 }
 
-/// Represents the state after `solc` was successfully invoked
+/// Represents the state after `zksolc` was successfully invoked
 #[derive(Debug)]
 struct CompiledState<'a> {
     output: AggregatedCompilerOutput,

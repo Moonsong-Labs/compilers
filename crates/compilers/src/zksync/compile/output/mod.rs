@@ -8,11 +8,10 @@ use crate::{
     },
     output::Builds,
     zksync::{
-        artifact_output::{
-            artifacts_artifacts, artifacts_into_artifacts, contract_name, zk::ZkContractArtifact,
-        },
+        artifact_output::zk::{ZkArtifactOutput, ZkContractArtifact},
         compile::output::contracts::{VersionedContract, VersionedContracts},
     },
+    ArtifactOutput,
 };
 use foundry_compilers_artifacts::{
     solc::CompactContractRef,
@@ -61,7 +60,9 @@ impl ProjectCompileOutput {
     /// This returns a chained iterator of both cached and recompiled contract artifacts.
     pub fn artifact_ids(&self) -> impl Iterator<Item = (ArtifactId, &ZkContractArtifact)> {
         let Self { cached_artifacts, compiled_artifacts, .. } = self;
-        artifacts_artifacts(cached_artifacts).chain(artifacts_artifacts(compiled_artifacts))
+        cached_artifacts
+            .artifacts::<ZkArtifactOutput>()
+            .chain(compiled_artifacts.artifacts::<ZkArtifactOutput>())
     }
 
     /// All artifacts together with their contract file name and name `<file name>:<name>`
@@ -69,8 +70,9 @@ impl ProjectCompileOutput {
     /// This returns a chained iterator of both cached and recompiled contract artifacts
     pub fn into_artifacts(self) -> impl Iterator<Item = (ArtifactId, ZkContractArtifact)> {
         let Self { cached_artifacts, compiled_artifacts, .. } = self;
-        artifacts_into_artifacts(cached_artifacts)
-            .chain(artifacts_into_artifacts(compiled_artifacts))
+        cached_artifacts
+            .into_artifacts::<ZkArtifactOutput>()
+            .chain(compiled_artifacts.into_artifacts::<ZkArtifactOutput>())
     }
 
     pub fn with_stripped_file_prefixes(mut self, base: impl AsRef<Path>) -> Self {
@@ -108,7 +110,7 @@ impl ProjectCompileOutput {
             .artifact_files()
             .chain(self.compiled_artifacts.artifact_files())
             .filter_map(|artifact| {
-                contract_name(&artifact.file)
+                ZkArtifactOutput::contract_name(&artifact.file)
                     .map(|name| (name, (&artifact.artifact, &artifact.version)))
             })
     }
