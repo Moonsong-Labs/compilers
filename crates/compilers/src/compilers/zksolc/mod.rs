@@ -38,7 +38,7 @@ pub use settings::ZkSolcSettings;
 
 pub const ZKSOLC: &str = "zksolc";
 pub const ZKSYNC_SOLC_RELEASE: Version = Version::new(1, 0, 1);
-pub const ZKSOLC_VERSION: Version = Version::new(1, 5, 2);
+pub const ZKSOLC_VERSION: Version = Version::new(1, 5, 3);
 
 #[derive(Debug, Clone, Serialize)]
 enum ZkSolcOS {
