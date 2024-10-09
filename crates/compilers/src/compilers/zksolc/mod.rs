@@ -185,6 +185,32 @@ impl ZkSolcCompiler {
     }
 }
 
+pub fn get_zksync_solc_version(path: &Path) -> Result<Option<Version>> {
+    let mut cmd = Command::new(path);
+    cmd.arg("--version").stdin(Stdio::piped()).stderr(Stdio::piped()).stdout(Stdio::piped());
+    debug!(?cmd, "getting solc version");
+    let output = cmd.output().map_err(|err| SolcError::io(err, path))?;
+    trace!(?output);
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let maybe_line = stdout.lines().filter(|l| !l.trim().is_empty()).last();
+        let maybe_version = if let Some(line) = maybe_line {
+            if line.starts_with("ZKsync") {
+                let version_str = line.trim_start_matches("ZKsync:").trim();
+                let version = Version::parse(version_str)?;
+                Some(version)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        Ok(maybe_version)
+    } else {
+        Err(SolcError::solc_output(&output))
+    }
+}
+
 /// Abstraction over `zksolc` command line utility
 ///
 /// Supports sync and async functions.
@@ -630,6 +656,8 @@ fn lock_file_path(compiler: &str, version: &str) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    use similar_asserts::assert_eq;
+
     use super::*;
 
     fn zksolc() -> ZkSolc {
@@ -652,6 +680,15 @@ mod tests {
     #[test]
     fn zksolc_version_works() {
         zksolc().version().unwrap();
+    }
+
+    #[test]
+    fn zksync_solc_version_works() {
+        let zksolc = zksolc();
+        let solc = zksolc.solc.unwrap();
+        let v = get_zksync_solc_version(&solc).unwrap().unwrap();
+        let prerelease = Version::parse(v.pre.as_str()).unwrap();
+        assert_eq!(prerelease, ZKSYNC_SOLC_RELEASE);
     }
 
     #[test]

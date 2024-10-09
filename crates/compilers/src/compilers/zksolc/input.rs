@@ -63,7 +63,7 @@ impl CompilerInput for ZkSolcVersionedInput {
     }
 }
 
-/// Input type `solc` expects.
+/// Input type `zksolc` expects.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ZkSolcInput {
     pub language: SolcLanguage,
