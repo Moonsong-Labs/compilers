@@ -282,7 +282,7 @@ impl CompilerSources {
         }
     }
 
-    /// Compiles all the files with `Solc`
+    /// Compiles all the files with `ZkSolc`
     fn compile(
         self,
         cache: &mut ArtifactsCache<'_, ZkArtifactOutput, ZkSolcCompiler>,
@@ -370,19 +370,26 @@ impl CompilerSources {
 
 /// Compiles the input set sequentially and returns an aggregated set of the solc `CompilerOutput`s
 fn compile_sequential(
-    zksolc: &ZkSolcCompiler,
+    zksolc_compiler: &ZkSolcCompiler,
     jobs: Vec<(ZkSolcVersionedInput, Vec<PathBuf>)>,
 ) -> Result<Vec<(ZkSolcVersionedInput, CompilerOutput, Vec<PathBuf>)>> {
     jobs.into_iter()
         .map(|(input, actually_dirty)| {
+            let zksolc = zksolc_compiler.zksolc(&input)?;
+
+            let (compiler_name, version) =
+                if let Some(zk_version) = zksolc.solc_version.zksync_version.as_ref() {
+                    ("zksolc and ZKsync solc".to_string(), zk_version.clone())
+                } else {
+                    (input.compiler_name().to_string(), input.version().clone())
+                };
+
             let start = Instant::now();
-            report::compiler_spawn(
-                &input.compiler_name(),
-                input.version(),
-                actually_dirty.as_slice(),
-            );
-            let output = zksolc.zksync_compile(&input)?;
-            report::compiler_success(&input.compiler_name(), input.version(), &start.elapsed());
+            report::compiler_spawn(&compiler_name, &version, actually_dirty.as_slice());
+
+            let output = zksolc.compile(&input.input)?;
+
+            report::compiler_success(&compiler_name, &version, &start.elapsed());
 
             Ok((input, output, actually_dirty))
         })

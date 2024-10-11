@@ -91,8 +91,9 @@ pub struct ZkSolcCompiler {
 #[cfg(feature = "project-util")]
 impl Default for ZkSolcCompiler {
     fn default() -> Self {
-        let zksolc = ZkSolc::new_from_version(&ZKSOLC_VERSION).expect("Could not install zksolc");
-        Self { zksolc: zksolc.zksolc, solc: Default::default() }
+        let zksolc =
+            ZkSolc::get_path_for_version(&ZKSOLC_VERSION).expect("Could not install zksolc");
+        Self { zksolc, solc: Default::default() }
     }
 }
 
@@ -110,7 +111,7 @@ impl Compiler for ZkSolcCompiler {
         // This method cannot be implemented until CompilerOutput is decoupled from
         // evm Contract
         panic!(
-            "`Compiler::create` not supported for `ZkSolcCompiler`, should call `zksync_compile`."
+            "`Compiler::compile` not supported for `ZkSolcCompiler`, should call ZkSolc::compile()"
         );
     }
 
@@ -149,11 +150,9 @@ impl Compiler for ZkSolcCompiler {
 }
 
 impl ZkSolcCompiler {
-    pub fn zksync_compile(&self, input: &ZkSolcVersionedInput) -> Result<CompilerOutput> {
-        let mut zksolc = ZkSolc::new(self.zksolc.clone());
-
-        match &self.solc {
-            SolcCompiler::Specific(solc) => zksolc.solc = Some(solc.solc.clone()),
+    pub fn zksolc(&self, input: &ZkSolcVersionedInput) -> Result<ZkSolc> {
+        let solc = match &self.solc {
+            SolcCompiler::Specific(solc) => Some(solc.solc.clone()),
             SolcCompiler::AutoDetect => {
                 #[cfg(test)]
                 crate::take_solc_installer_lock!(_lock);
@@ -165,50 +164,69 @@ impl ZkSolcCompiler {
                 let maybe_solc =
                     ZkSolc::find_solc_installed_version(&solc_version_without_metadata)?;
                 if let Some(solc) = maybe_solc {
-                    zksolc.solc = Some(solc);
+                    Some(solc)
                 } else {
                     #[cfg(feature = "async")]
                     {
                         let installed_solc_path =
                             ZkSolc::solc_blocking_install(&solc_version_without_metadata)?;
-                        zksolc.solc = Some(installed_solc_path);
+                        Some(installed_solc_path)
                     }
                 }
             }
-        }
+        };
+
+        let mut zksolc = ZkSolc::new(self.zksolc.clone(), solc)?;
 
         zksolc.base_path.clone_from(&input.cli_settings.base_path);
         zksolc.allow_paths.clone_from(&input.cli_settings.allow_paths);
         zksolc.include_paths.clone_from(&input.cli_settings.include_paths);
 
-        zksolc.compile(&input.input)
+        Ok(zksolc)
     }
 }
 
-pub fn get_zksync_solc_version(path: &Path) -> Result<Option<Version>> {
+/// Version metadata. Will include `zksync_version` if compiler is zksync solc.
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct SolcVersion {
+    /// The solc compiler version (e.g: 0.8.20)
+    pub version: Version,
+    /// The full zksync solc compiler version (e.g: 0.8.20-1.0.1)
+    pub zksync_version: Option<Version>,
+}
+
+/// Given a solc path, get both the solc semver and optional zkSync version.
+pub fn get_solc_type_and_version(path: &Path) -> Result<SolcVersion, SolcError> {
     let mut cmd = Command::new(path);
     cmd.arg("--version").stdin(Stdio::piped()).stderr(Stdio::piped()).stdout(Stdio::piped());
-    debug!(?cmd, "getting solc version");
-    let output = cmd.output().map_err(|err| SolcError::io(err, path))?;
+    debug!(?cmd, "getting Solc versions");
+
+    let output = cmd.output().map_err(|e| SolcError::io(e, path))?;
     trace!(?output);
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let maybe_line = stdout.lines().filter(|l| !l.trim().is_empty()).last();
-        let maybe_version = if let Some(line) = maybe_line {
-            if line.starts_with("ZKsync") {
-                let version_str = line.trim_start_matches("ZKsync:").trim();
-                let version = Version::parse(version_str)?;
-                Some(version)
-            } else {
-                None
-            }
+
+    if !output.status.success() {
+        return Err(SolcError::solc_output(&output));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+
+    // Get solc version from second line
+    let version = lines.get(1).ok_or_else(|| SolcError::msg("Version not found in Solc output"))?;
+    let version =
+        Version::from_str(&version.trim_start_matches("Version: ").replace(".g++", ".gcc"))?;
+
+    // Check for ZKsync version in the last line
+    let zksync_version = lines.last().and_then(|line| {
+        if line.starts_with("ZKsync") {
+            let version_str = line.trim_start_matches("ZKsync:").trim();
+            Version::parse(version_str).ok()
         } else {
             None
-        };
-        Ok(maybe_version)
-    } else {
-        Err(SolcError::solc_output(&output))
-    }
+        }
+    });
+
+    Ok(SolcVersion { version, zksync_version })
 }
 
 /// Abstraction over `zksolc` command line utility
@@ -230,38 +248,52 @@ pub struct ZkSolc {
     pub include_paths: BTreeSet<PathBuf>,
     /// Value for --solc arg
     pub solc: Option<PathBuf>,
-}
-
-impl Default for ZkSolc {
-    fn default() -> Self {
-        if let Ok(zksolc) = std::env::var("ZKSOLC_PATH") {
-            return Self::new(zksolc);
-        }
-
-        Self::new(ZKSOLC)
-    }
+    /// Version data for solc
+    pub solc_version: SolcVersion,
 }
 
 impl ZkSolc {
     /// A new instance which points to `zksolc`
-    pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self {
-            zksolc: path.into(),
+    pub fn new(path: PathBuf, solc: Option<PathBuf>) -> Result<Self> {
+        let default_solc_path = PathBuf::from("solc");
+        let solc_path = solc.as_ref().unwrap_or(&default_solc_path);
+        let solc_version = get_solc_type_and_version(solc_path)?;
+        Ok(Self {
+            zksolc: path,
             base_path: None,
             allow_paths: Default::default(),
             include_paths: Default::default(),
-            solc: None,
-        }
+            solc,
+            solc_version,
+        })
     }
 
-    pub fn new_from_version(version: &Version) -> Result<Self> {
+    pub fn get_path_for_version(version: &Version) -> Result<PathBuf> {
         let maybe_zksolc = Self::find_installed_version(version)?;
 
-        if let Some(zksolc) = maybe_zksolc {
-            Ok(zksolc)
-        } else {
-            Self::blocking_install(version)
-        }
+        let path =
+            if let Some(zksolc) = maybe_zksolc { zksolc } else { Self::blocking_install(version)? };
+
+        Ok(path)
+    }
+
+    /// Invokes `zksolc --version` and parses the output as a SemVer [`Version`].
+    pub fn get_version_for_path(path: &Path) -> Result<Version> {
+        let mut cmd = Command::new(path);
+        cmd.arg("--version").stdin(Stdio::piped()).stderr(Stdio::piped()).stdout(Stdio::piped());
+        debug!(?cmd, "getting ZkSolc version");
+        let output = cmd.output().map_err(map_io_err(path))?;
+        trace!(?output);
+        let version = version_from_output(output)?;
+        debug!(%version);
+        Ok(version)
+    }
+
+    pub fn set_solc_path(&mut self, path: PathBuf) -> Result<()> {
+        let solc_version = get_solc_type_and_version(&path)?;
+        self.solc = Some(path);
+        self.solc_version = solc_version;
+        Ok(())
     }
 
     /// Sets zksolc's base path
@@ -272,11 +304,16 @@ impl ZkSolc {
 
     /// Compiles with `--standard-json` and deserializes the output as [`CompilerOutput`].
     pub fn compile(&self, input: &ZkSolcInput) -> Result<CompilerOutput> {
+        // If solc is zksync solc, override the returned version to put the complete zksolc one
         let output = self.compile_output(input)?;
         // Only run UTF-8 validation once.
         let output = std::str::from_utf8(&output).map_err(|_| SolcError::InvalidUtf8)?;
 
-        Ok(serde_json::from_str(output)?)
+        let mut compiler_output: CompilerOutput = serde_json::from_str(output)?;
+        // Add zksync version so that there's some way to identify if zksync solc was used
+        // by looking at build info
+        compiler_output.zksync_solc_version = self.solc_version.zksync_version.clone();
+        Ok(compiler_output)
     }
 
     pub fn solc_installed_versions() -> Vec<Version> {
@@ -349,41 +386,17 @@ impl ZkSolc {
         trace!(input=%serde_json::to_string(input).unwrap_or_else(|e| e.to_string()));
         debug!(?cmd, "compiling");
 
-        let mut child = cmd.spawn().map_err(self.map_io_err())?;
+        let mut child = cmd.spawn().map_err(map_io_err(&self.zksolc))?;
         debug!("spawned");
 
         let stdin = child.stdin.as_mut().unwrap();
         serde_json::to_writer(stdin, input)?;
         debug!("wrote JSON input to stdin");
 
-        let output = child.wait_with_output().map_err(self.map_io_err())?;
+        let output = child.wait_with_output().map_err(map_io_err(&self.zksolc))?;
         debug!(%output.status, output.stderr = ?String::from_utf8_lossy(&output.stderr), "finished");
 
         compile_output(output)
-    }
-
-    /// Invokes `zksolc --version` and parses the output as a SemVer [`Version`], stripping the
-    /// pre-release and build metadata.
-    pub fn version_short(&self) -> Result<Version> {
-        let version = self.version()?;
-        Ok(Version::new(version.major, version.minor, version.patch))
-    }
-
-    /// Invokes `zksolc --version` and parses the output as a SemVer [`Version`].
-    #[instrument(level = "debug", skip_all)]
-    pub fn version(&self) -> Result<Version> {
-        let mut cmd = Command::new(&self.zksolc);
-        cmd.arg("--version").stdin(Stdio::piped()).stderr(Stdio::piped()).stdout(Stdio::piped());
-        debug!(?cmd, "getting ZkSolc version");
-        let output = cmd.output().map_err(self.map_io_err())?;
-        trace!(?output);
-        let version = version_from_output(output)?;
-        debug!(%version);
-        Ok(version)
-    }
-
-    fn map_io_err(&self) -> impl FnOnce(std::io::Error) -> SolcError + '_ {
-        move |err| SolcError::io(err, &self.zksolc)
     }
 
     fn compilers_dir() -> Result<PathBuf> {
@@ -410,7 +423,7 @@ impl ZkSolc {
 
     /// Install zksolc version and block the thread
     #[cfg(feature = "async")]
-    pub fn blocking_install(version: &Version) -> Result<Self> {
+    pub fn blocking_install(version: &Version) -> Result<PathBuf> {
         let os = get_operating_system()?;
         let compiler_prefix = os.get_zksolc_prefix();
         let download_url = if version.pre.is_empty() {
@@ -441,7 +454,7 @@ impl ZkSolc {
         match install {
             Ok(path) => {
                 //crate::report::solc_installation_success(version);
-                Ok(Self::new(path))
+                Ok(path)
             }
             Err(err) => {
                 //crate::report::solc_installation_error(version, &err.to_string());
@@ -471,13 +484,13 @@ impl ZkSolc {
         compiler_blocking_install(solc_path, lock_path, &download_url, &label)
     }
 
-    pub fn find_installed_version(version: &Version) -> Result<Option<Self>> {
+    pub fn find_installed_version(version: &Version) -> Result<Option<PathBuf>> {
         let zksolc = Self::compiler_path(version)?;
 
         if !zksolc.is_file() {
             return Ok(None);
         }
-        Ok(Some(Self::new(zksolc)))
+        Ok(Some(zksolc))
     }
 
     pub fn find_solc_installed_version(version_str: &str) -> Result<Option<PathBuf>> {
@@ -488,6 +501,10 @@ impl ZkSolc {
         }
         Ok(Some(solc))
     }
+}
+
+fn map_io_err(zksolc_path: &Path) -> impl FnOnce(std::io::Error) -> SolcError + '_ {
+    move |err| SolcError::io(err, zksolc_path)
 }
 
 fn compile_output(output: Output) -> Result<Vec<u8>> {
@@ -522,12 +539,6 @@ fn version_from_output(output: Output) -> Result<Version> {
 impl AsRef<Path> for ZkSolc {
     fn as_ref(&self) -> &Path {
         &self.zksolc
-    }
-}
-
-impl<T: Into<PathBuf>> From<T> for ZkSolc {
-    fn from(zksolc: T) -> Self {
-        Self::new(zksolc.into())
     }
 }
 
@@ -658,37 +669,54 @@ fn lock_file_path(compiler: &str, version: &str) -> PathBuf {
 mod tests {
     use similar_asserts::assert_eq;
 
+    use crate::solc::Solc;
+
     use super::*;
 
     fn zksolc() -> ZkSolc {
-        let mut zksolc = ZkSolc::new_from_version(&ZKSOLC_VERSION).unwrap();
+        let zksolc_path = ZkSolc::get_path_for_version(&ZKSOLC_VERSION).unwrap();
         let solc_version = "0.8.27";
 
         crate::take_solc_installer_lock!(_lock);
         let maybe_solc = ZkSolc::find_solc_installed_version(solc_version).unwrap();
-        if let Some(solc) = maybe_solc {
-            zksolc.solc = Some(solc);
+        let solc_path = if let Some(solc) = maybe_solc {
+            solc
         } else {
-            {
-                let installed_solc_path = ZkSolc::solc_blocking_install(solc_version).unwrap();
-                zksolc.solc = Some(installed_solc_path);
-            }
+            ZkSolc::solc_blocking_install(solc_version).unwrap()
+        };
+        ZkSolc::new(zksolc_path, Some(solc_path)).unwrap()
+    }
+
+    fn vanilla_solc() -> Solc {
+        if let Some(solc) = Solc::find_svm_installed_version(&Version::new(0, 8, 18)).unwrap() {
+            solc
+        } else {
+            Solc::blocking_install(&Version::new(0, 8, 18)).unwrap()
         }
-        zksolc
     }
 
     #[test]
     fn zksolc_version_works() {
-        zksolc().version().unwrap();
+        ZkSolc::get_version_for_path(&zksolc().zksolc).unwrap();
     }
 
     #[test]
-    fn zksync_solc_version_works() {
+    fn get_solc_type_and_version_works_for_zksync_solc() {
         let zksolc = zksolc();
         let solc = zksolc.solc.unwrap();
-        let v = get_zksync_solc_version(&solc).unwrap().unwrap();
-        let prerelease = Version::parse(v.pre.as_str()).unwrap();
+        let solc_v = get_solc_type_and_version(&solc).unwrap();
+        let zksync_v = solc_v.zksync_version.unwrap();
+        let prerelease = Version::parse(zksync_v.pre.as_str()).unwrap();
+        assert_eq!(solc_v.version.minor, 8);
         assert_eq!(prerelease, ZKSYNC_SOLC_RELEASE);
+    }
+
+    #[test]
+    fn get_solc_type_and_version_works_for_vanilla_solc() {
+        let solc = vanilla_solc();
+        let solc_v = get_solc_type_and_version(&solc.solc).unwrap();
+        assert_eq!(solc_v.version.minor, 8);
+        assert!(solc_v.zksync_version.is_none());
     }
 
     #[test]

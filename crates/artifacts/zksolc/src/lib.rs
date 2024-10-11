@@ -2,6 +2,7 @@ use foundry_compilers_artifacts_solc::{
     CompactContractRef, FileToContractsMap, SourceFile, SourceFiles,
 };
 
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
@@ -36,6 +37,10 @@ pub struct CompilerOutput {
     /// The `zksolc` compiler version.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub zk_version: Option<String>,
+    /// The ZKsync solc compiler version (if it was used). This field is
+    /// inserted by this crate and not an actual part of the compiler output
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zksync_solc_version: Option<Version>,
 }
 
 impl CompilerOutput {

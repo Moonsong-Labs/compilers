@@ -241,11 +241,12 @@ contract B { }
 
     let mut build_info_count = 0;
     for entry in fs::read_dir(info_dir).unwrap() {
-        let _info =
+        let info =
             BuildInfo::<ZkSolcInput, foundry_compilers_artifacts::zksolc::CompilerOutput>::read(
                 &entry.unwrap().path(),
             )
             .unwrap();
+        assert!(info.output.zksync_solc_version.is_some());
         build_info_count += 1;
     }
     assert_eq!(build_info_count, 1);
