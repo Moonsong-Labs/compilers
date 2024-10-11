@@ -188,7 +188,7 @@ impl ZkSolcCompiler {
 
 /// Version metadata. Will include `zksync_version` if compiler is zksync solc.
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct SolcVersion {
+pub struct SolcVersionInfo {
     /// The solc compiler version (e.g: 0.8.20)
     pub version: Version,
     /// The full zksync solc compiler version (e.g: 0.8.20-1.0.1)
@@ -196,7 +196,7 @@ pub struct SolcVersion {
 }
 
 /// Given a solc path, get both the solc semver and optional zkSync version.
-pub fn get_solc_type_and_version(path: &Path) -> Result<SolcVersion, SolcError> {
+pub fn get_solc_version_info(path: &Path) -> Result<SolcVersionInfo, SolcError> {
     let mut cmd = Command::new(path);
     cmd.arg("--version").stdin(Stdio::piped()).stderr(Stdio::piped()).stdout(Stdio::piped());
     debug!(?cmd, "getting Solc versions");
@@ -226,7 +226,7 @@ pub fn get_solc_type_and_version(path: &Path) -> Result<SolcVersion, SolcError> 
         }
     });
 
-    Ok(SolcVersion { version, zksync_version })
+    Ok(SolcVersionInfo { version, zksync_version })
 }
 
 /// Abstraction over `zksolc` command line utility
@@ -249,7 +249,7 @@ pub struct ZkSolc {
     /// Value for --solc arg
     pub solc: Option<PathBuf>,
     /// Version data for solc
-    pub solc_version: SolcVersion,
+    pub solc_version_info: SolcVersionInfo,
 }
 
 impl ZkSolc {
@@ -257,14 +257,14 @@ impl ZkSolc {
     pub fn new(path: PathBuf, solc: Option<PathBuf>) -> Result<Self> {
         let default_solc_path = PathBuf::from("solc");
         let solc_path = solc.as_ref().unwrap_or(&default_solc_path);
-        let solc_version = get_solc_type_and_version(solc_path)?;
+        let solc_version_info = get_solc_version_info(solc_path)?;
         Ok(Self {
             zksolc: path,
             base_path: None,
             allow_paths: Default::default(),
             include_paths: Default::default(),
             solc,
-            solc_version,
+            solc_version_info,
         })
     }
 
@@ -289,13 +289,6 @@ impl ZkSolc {
         Ok(version)
     }
 
-    pub fn set_solc_path(&mut self, path: PathBuf) -> Result<()> {
-        let solc_version = get_solc_type_and_version(&path)?;
-        self.solc = Some(path);
-        self.solc_version = solc_version;
-        Ok(())
-    }
-
     /// Sets zksolc's base path
     pub fn with_base_path(mut self, base_path: impl Into<PathBuf>) -> Self {
         self.base_path = Some(base_path.into());
@@ -312,7 +305,7 @@ impl ZkSolc {
         let mut compiler_output: CompilerOutput = serde_json::from_str(output)?;
         // Add zksync version so that there's some way to identify if zksync solc was used
         // by looking at build info
-        compiler_output.zksync_solc_version = self.solc_version.zksync_version.clone();
+        compiler_output.zksync_solc_version = self.solc_version_info.zksync_version.clone();
         Ok(compiler_output)
     }
 
@@ -704,7 +697,7 @@ mod tests {
     fn get_solc_type_and_version_works_for_zksync_solc() {
         let zksolc = zksolc();
         let solc = zksolc.solc.unwrap();
-        let solc_v = get_solc_type_and_version(&solc).unwrap();
+        let solc_v = get_solc_version_info(&solc).unwrap();
         let zksync_v = solc_v.zksync_version.unwrap();
         let prerelease = Version::parse(zksync_v.pre.as_str()).unwrap();
         assert_eq!(solc_v.version.minor, 8);
@@ -714,7 +707,7 @@ mod tests {
     #[test]
     fn get_solc_type_and_version_works_for_vanilla_solc() {
         let solc = vanilla_solc();
-        let solc_v = get_solc_type_and_version(&solc.solc).unwrap();
+        let solc_v = get_solc_version_info(&solc.solc).unwrap();
         assert_eq!(solc_v.version.minor, 8);
         assert!(solc_v.zksync_version.is_none());
     }

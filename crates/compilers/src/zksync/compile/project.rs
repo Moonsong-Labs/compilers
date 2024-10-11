@@ -378,7 +378,7 @@ fn compile_sequential(
             let zksolc = zksolc_compiler.zksolc(&input)?;
 
             let (compiler_name, version) =
-                if let Some(zk_version) = zksolc.solc_version.zksync_version.as_ref() {
+                if let Some(zk_version) = zksolc.solc_version_info.zksync_version.as_ref() {
                     ("zksolc and ZKsync solc".to_string(), zk_version.clone())
                 } else {
                     (input.compiler_name().to_string(), input.version().clone())
