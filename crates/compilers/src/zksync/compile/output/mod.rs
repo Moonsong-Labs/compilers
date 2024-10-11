@@ -258,11 +258,7 @@ impl AggregatedCompilerOutput {
 
     /// Checks if there are any compiler warnings that are not ignored by the specified error codes
     /// and file paths.
-    pub fn has_warning<'a>(
-        &self,
-        ignored_error_codes: &[u64],
-        ignored_file_paths: &[PathBuf],
-    ) -> bool {
+    pub fn has_warning(&self, ignored_error_codes: &[u64], ignored_file_paths: &[PathBuf]) -> bool {
         self.errors
             .iter()
             .any(|error| !self.should_ignore(ignored_error_codes, ignored_file_paths, error))
@@ -532,7 +528,7 @@ impl<'a> OutputDiagnostics<'a> {
 
     /// Returns true if there is at least one warning
     pub fn has_warning(&self) -> bool {
-        self.compiler_output.has_warning(&self.ignored_error_codes, &self.ignored_file_paths)
+        self.compiler_output.has_warning(self.ignored_error_codes, self.ignored_file_paths)
     }
 
     /// Returns true if the contract is a expected to be a test
