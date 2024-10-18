@@ -1,11 +1,20 @@
-use std::{collections::HashMap, fs, path::PathBuf, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::PathBuf,
+    str::FromStr,
+};
 
 use foundry_compilers::{
     buildinfo::BuildInfo,
     cache::CompilerCache,
     project_util::*,
     resolver::parse::SolData,
-    zksolc::{input::ZkSolcInput, ZkSolcCompiler, ZkSolcSettings},
+    zksolc::{
+        input::ZkSolcInput,
+        settings::{ZkSolcError, ZkSolcWarning},
+        ZkSolcCompiler, ZkSolcSettings,
+    },
     zksync::{self, artifact_output::zk::ZkArtifactOutput},
     Graph, ProjectBuilder, ProjectPathsConfig,
 };
@@ -40,6 +49,93 @@ fn zksync_can_compile_dapp_sample() {
 
     let updated_cache = CompilerCache::<ZkSolcSettings>::read(project.cache_path()).unwrap();
     assert_eq!(cache, updated_cache);
+}
+
+#[test]
+fn zksync_can_compile_contract_with_suppressed_errors() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .try_init()
+        .ok();
+    let mut project = TempProject::<ZkSolcCompiler, ZkArtifactOutput>::dapptools().unwrap();
+
+    project
+        .add_source(
+            "Erroneous",
+            r#"
+        // SPDX-License-Identifier: MIT OR Apache-2.0
+        pragma solidity ^0.8.10;
+        contract Erroneous {
+            function distribute(address payable recipient) public {
+                recipient.send(1);
+                recipient.transfer(1);
+            }
+        }
+        "#,
+        )
+        .unwrap();
+
+    let compiled = zksync::project_compile(project.project()).unwrap();
+    assert!(compiled.has_compiler_errors());
+
+    project.project_mut().settings.settings.suppressed_errors =
+        HashSet::from([ZkSolcError::SendTransfer]);
+
+    let compiled = zksync::project_compile(project.project()).unwrap();
+    compiled.assert_success();
+    assert!(compiled.find_first("Erroneous").is_some());
+}
+
+#[test]
+fn zksync_can_compile_contract_with_suppressed_warnings() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .try_init()
+        .ok();
+    let mut project = TempProject::<ZkSolcCompiler, ZkArtifactOutput>::dapptools().unwrap();
+
+    project
+        .add_source(
+            "Warning",
+            r#"
+        // SPDX-License-Identifier: MIT OR Apache-2.0
+        pragma solidity ^0.8.10;
+        contract Warning {
+            function test() public view {
+                require(tx.origin != address(0), "what");
+            }
+        }
+        "#,
+        )
+        .unwrap();
+
+    let compiled = zksync::project_compile(project.project()).unwrap();
+    compiled.assert_success();
+    assert!(
+        compiled
+            .compiler_output
+            .errors
+            .iter()
+            .any(|err| err.is_warning() && err.message.contains("tx.origin")),
+        "{:#?}",
+        compiled.compiler_output.errors
+    );
+
+    project.project_mut().settings.settings.suppressed_warnings =
+        HashSet::from([ZkSolcWarning::TxOrigin]);
+
+    let compiled = zksync::project_compile(project.project()).unwrap();
+    compiled.assert_success();
+    assert!(compiled.find_first("Warning").is_some());
+    assert!(
+        !compiled
+            .compiler_output
+            .errors
+            .iter()
+            .any(|err| err.is_warning() && err.message.contains("tx.origin")),
+        "{:#?}",
+        compiled.compiler_output.errors
+    );
 }
 
 #[test]
