@@ -90,8 +90,9 @@ pub struct ZkSolcCompiler {
 #[cfg(feature = "project-util")]
 impl Default for ZkSolcCompiler {
     fn default() -> Self {
-        let zksolc =
-            ZkSolc::get_path_for_version(&ZKSOLC_VERSION).expect("Could not install zksolc");
+        // let zksolc =
+        //     ZkSolc::get_path_for_version(&ZKSOLC_VERSION).expect("Could not install zksolc");
+        let zksolc = PathBuf::from_str("<PATH_TO_RELEASE>").unwrap();
         Self { zksolc, solc: Default::default() }
     }
 }

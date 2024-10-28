@@ -75,10 +75,12 @@ pub struct ZkSolcInput {
     pub language: SolcLanguage,
     pub sources: Sources,
     pub settings: ZkSettings,
+    /*
     #[serde(default, skip_serializing_if = "HashSet::is_empty")]
     pub suppressed_warnings: HashSet<ZkSolcWarning>,
     #[serde(default, skip_serializing_if = "HashSet::is_empty")]
     pub suppressed_errors: HashSet<ZkSolcError>,
+    */
 }
 
 /// Default `language` field is set to `"Solidity"`.
@@ -88,17 +90,18 @@ impl Default for ZkSolcInput {
             language: SolcLanguage::Solidity,
             sources: Sources::default(),
             settings: ZkSettings::default(),
-            suppressed_warnings: HashSet::default(),
-            suppressed_errors: HashSet::default(),
+            // suppressed_warnings: HashSet::default(),
+            // suppressed_errors: HashSet::default(),
         }
     }
 }
 
 impl ZkSolcInput {
     fn new(language: SolcLanguage, sources: Sources, mut settings: ZkSettings) -> Self {
-        let suppressed_warnings = mem::take(&mut settings.suppressed_warnings);
-        let suppressed_errors = mem::take(&mut settings.suppressed_errors);
-        Self { language, sources, settings, suppressed_warnings, suppressed_errors }
+        // let suppressed_warnings = mem::take(&mut settings.suppressed_warnings);
+        // let suppressed_errors = mem::take(&mut settings.suppressed_errors);
+        //Self { language, sources, settings, suppressed_warnings, suppressed_errors }
+        Self { language, sources, settings }
     }
 
     /// Removes the `base` path from all source files
