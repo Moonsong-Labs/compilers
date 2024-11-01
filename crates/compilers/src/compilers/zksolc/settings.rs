@@ -15,6 +15,19 @@ use std::{
     str::FromStr,
 };
 
+///
+/// The Solidity compiler codegen.
+///
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Codegen {
+    /// The Yul IR.
+    #[default]
+    Yul,
+    /// The EVM legacy assembly IR.
+    EVMLA,
+}
+
 /// zksolc standard json input settings. See:
 /// https://docs.zksync.io/zk-stack/components/compiler/toolchain/solidity.html#standard-json for differences
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,6 +38,9 @@ pub struct ZkSettings {
     /// false by default.
     #[serde(rename = "viaIR", default, skip_serializing_if = "Option::is_none")]
     pub via_ir: Option<bool>,
+    /// The Solidity codegen.
+    #[serde(default)]
+    pub codegen: Codegen,
     // TODO: era-compiler-solidity uses a BTreeSet of strings. In theory the serialization
     // should be the same but maybe we should double check
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -143,6 +159,7 @@ impl Default for ZkSettings {
             enable_eravm_extensions: false,
             llvm_options: Default::default(),
             force_evmla: false,
+            codegen: Default::default(),
         }
     }
 }
@@ -168,6 +185,7 @@ impl CompilerSettings for ZkSolcSettings {
                     enable_eravm_extensions,
                     llvm_options,
                     force_evmla,
+                    codegen,
                 },
             ..
         } = self;
@@ -183,6 +201,7 @@ impl CompilerSettings for ZkSolcSettings {
             && *enable_eravm_extensions == other.settings.enable_eravm_extensions
             && *llvm_options == other.settings.llvm_options
             && *force_evmla == other.settings.force_evmla
+            && *codegen == other.settings.codegen
     }
 
     fn with_remappings(mut self, remappings: &[Remapping]) -> Self {

@@ -7,18 +7,18 @@ use std::collections::HashSet;
 #[derive(Debug, Default, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct OutputSelection {
     /// Only the 'all' wildcard is available for robustness reasons.
-    #[serde(rename = "*", skip_serializing_if = "Option::is_none")]
-    pub all: Option<FileOutputSelection>,
+    #[serde(rename = "*")]
+    pub all: FileOutputSelection,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FileOutputSelection {
     /// The per-file output selections.
-    #[serde(rename = "", skip_serializing_if = "Option::is_none")]
-    pub per_file: Option<HashSet<OutputSelectionFlag>>,
+    #[serde(rename = "")]
+    pub per_file: HashSet<OutputSelectionFlag>,
     /// The per-contract output selections.
-    #[serde(rename = "*", skip_serializing_if = "Option::is_none")]
-    pub per_contract: Option<HashSet<OutputSelectionFlag>>,
+    #[serde(rename = "*")]
+    pub per_contract: HashSet<OutputSelectionFlag>,
 }
 
 ///
