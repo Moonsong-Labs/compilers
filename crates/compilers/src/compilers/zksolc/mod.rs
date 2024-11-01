@@ -38,7 +38,7 @@ pub use settings::ZkSolcSettings;
 
 pub const ZKSOLC: &str = "zksolc";
 pub const ZKSYNC_SOLC_RELEASE: Version = Version::new(1, 0, 1);
-pub const ZKSOLC_VERSION: Version = Version::new(1, 5, 4);
+pub const ZKSOLC_VERSION: Version = Version::new(1, 5, 7);
 
 #[derive(Debug, Clone, Serialize)]
 enum ZkSolcOS {
@@ -336,7 +336,7 @@ impl ZkSolc {
     pub fn solc_available_versions() -> Vec<Version> {
         let mut ret = vec![];
         let min_max_patch_by_minor_versions =
-            vec![(4, 12, 26), (5, 0, 17), (6, 0, 12), (7, 0, 6), (8, 0, 27)];
+            vec![(4, 12, 26), (5, 0, 17), (6, 0, 12), (7, 0, 6), (8, 0, 28)];
         for (minor, min_patch, max_patch) in min_max_patch_by_minor_versions {
             for i in min_patch..=max_patch {
                 ret.push(Version::new(0, minor, i));
