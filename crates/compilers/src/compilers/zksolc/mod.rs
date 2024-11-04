@@ -33,8 +33,7 @@ use std::os::unix::fs::PermissionsExt;
 
 pub mod input;
 pub mod settings;
-pub use settings::ZkSettings;
-pub use settings::ZkSolcSettings;
+pub use settings::{ZkSettings, ZkSolcSettings};
 
 pub const ZKSOLC: &str = "zksolc";
 pub const ZKSYNC_SOLC_RELEASE: Version = Version::new(1, 0, 1);
