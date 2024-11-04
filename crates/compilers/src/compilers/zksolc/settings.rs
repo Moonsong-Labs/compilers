@@ -9,7 +9,7 @@ use foundry_compilers_artifacts::{
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, HashSet},
     fmt,
     path::{Path, PathBuf},
     str::FromStr,
@@ -17,7 +17,6 @@ use std::{
 
 ///
 /// The Solidity compiler codegen.
-///
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Codegen {
@@ -26,6 +25,25 @@ pub enum Codegen {
     Yul,
     /// The EVM legacy assembly IR.
     EVMLA,
+}
+
+/// `zksolc` warnings that can be suppressed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum ZkSolcWarning {
+    /// `txorigin` warning: Using `tx.origin` in place of `msg.sender`.
+    TxOrigin,
+}
+
+/// `zksolc` errors that can be suppressed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum ZkSolcError {
+    /// `sendtransfer` error: Using `send()` or `transfer()` methods on `address payable` instead
+    /// of `call()`.
+    SendTransfer,
 }
 
 /// zksolc standard json input settings. See:
@@ -82,6 +100,12 @@ pub struct ZkSettings {
     /// Whether to compile via EVM assembly.
     #[serde(default, rename = "forceEVMLA")]
     pub force_evmla: bool,
+    /// Suppressed `zksolc` warnings.
+    #[serde(default, skip_serializing_if = "HashSet::is_empty")]
+    pub suppressed_warnings: HashSet<ZkSolcWarning>,
+    /// Suppressed `zksolc` errors.
+    #[serde(default, skip_serializing_if = "HashSet::is_empty")]
+    pub suppressed_errors: HashSet<ZkSolcError>,
 }
 
 // Analogous to SolcSettings for Zk compiler
@@ -160,6 +184,8 @@ impl Default for ZkSettings {
             llvm_options: Default::default(),
             force_evmla: false,
             codegen: Default::default(),
+            suppressed_errors: Default::default(),
+            suppressed_warnings: Default::default(),
         }
     }
 }
@@ -186,6 +212,8 @@ impl CompilerSettings for ZkSolcSettings {
                     llvm_options,
                     force_evmla,
                     codegen,
+                    suppressed_warnings,
+                    suppressed_errors,
                 },
             ..
         } = self;
@@ -202,6 +230,8 @@ impl CompilerSettings for ZkSolcSettings {
             && *llvm_options == other.settings.llvm_options
             && *force_evmla == other.settings.force_evmla
             && *codegen == other.settings.codegen
+            && *suppressed_warnings == other.settings.suppressed_warnings
+            && *suppressed_errors == other.settings.suppressed_errors
     }
 
     fn with_remappings(mut self, remappings: &[Remapping]) -> Self {
