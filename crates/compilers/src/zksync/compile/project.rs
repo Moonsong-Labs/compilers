@@ -46,8 +46,12 @@ impl<'a> ProjectCompiler<'a> {
     /// multiple `jobs`, see [`crate::Project::set_solc_jobs()`].
     pub fn with_sources(
         project: &'a Project<ZkSolcCompiler, ZkArtifactOutput>,
-        sources: Sources,
+        mut sources: Sources,
     ) -> Result<Self> {
+        println!("lets gooo");
+        if let Some(filter) = &project.sparse_output {
+            sources.retain(|f, _| filter.is_match(f))
+        }
         let graph = Graph::resolve_sources(&project.paths, sources)?;
         let (sources, edges) = graph.into_sources_by_version(
             project.offline,
