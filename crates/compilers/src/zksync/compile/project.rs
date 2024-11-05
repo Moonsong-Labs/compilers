@@ -48,7 +48,6 @@ impl<'a> ProjectCompiler<'a> {
         project: &'a Project<ZkSolcCompiler, ZkArtifactOutput>,
         mut sources: Sources,
     ) -> Result<Self> {
-        println!("wtf bro");
         if let Some(filter) = &project.sparse_output {
             sources.retain(|f, _| filter.is_match(f))
         }
