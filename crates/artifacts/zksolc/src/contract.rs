@@ -1,5 +1,5 @@
 //! Contract related types.
-use crate::Evm;
+use crate::EraVM;
 use alloy_json_abi::JsonAbi;
 use foundry_compilers_artifacts_solc::{
     CompactContractBytecode, CompactContractBytecodeCow, CompactContractRef, DevDoc, StorageLayout,
@@ -8,10 +8,54 @@ use foundry_compilers_artifacts_solc::{
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, collections::BTreeMap};
 
+pub fn maybe_unlinked_contract<'de, D>(deserializer: D) -> Result<RawContract, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct RawContractWithLibs {
+        #[serde(default)]
+        pub missing_libraries: Vec<String>,
+        #[serde(flatten)]
+        pub contract: RawContract,
+    }
+
+    let RawContractWithLibs { missing_libraries, mut contract } =
+        RawContractWithLibs::deserialize(deserializer)?;
+
+    if !missing_libraries.is_empty() {
+        if let Some(bc) = contract.eravm.as_mut().and_then(|eravm| eravm.bytecode.as_mut()) {
+            bc.missing_libraries = missing_libraries;
+            bc.mark_as_unlinked();
+        }
+    }
+
+    Ok(contract)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(transparent)]
+pub struct Contract(#[serde(deserialize_with = "maybe_unlinked_contract")] pub RawContract);
+
+impl std::ops::Deref for Contract {
+    type Target = RawContract;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for Contract {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 /// Represents a compiled solidity contract
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct Contract {
+pub struct RawContract {
     pub abi: Option<JsonAbi>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
@@ -31,12 +75,21 @@ pub struct Contract {
     /// The contract factory dependencies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub factory_dependencies: Option<BTreeMap<String, String>>,
-    /// The contract missing libraries.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub missing_libraries: Option<Vec<String>>,
     /// EVM-related outputs
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub evm: Option<Evm>,
+    pub eravm: Option<EraVM>,
+}
+
+impl RawContract {
+    pub fn is_unlinked(&self) -> bool {
+        self.hash.is_none()
+            || self
+                .eravm
+                .as_ref()
+                .and_then(|eravm| eravm.bytecode.as_ref())
+                .map(|bc| !bc.missing_libraries.is_empty())
+                .unwrap_or_default()
+    }
 }
 
 // CompactContract variants
@@ -48,10 +101,10 @@ pub struct Contract {
 // Ideally the Artifacts trait would not be coupled to a specific Contract type
 impl<'a> From<&'a Contract> for CompactContractBytecodeCow<'a> {
     fn from(artifact: &'a Contract) -> Self {
-        let (bytecode, deployed_bytecode) = if let Some(ref evm) = artifact.evm {
+        let (bytecode, deployed_bytecode) = if let Some(ref eravm) = artifact.eravm {
             (
-                evm.bytecode.clone().map(Into::into).map(Cow::Owned),
-                evm.bytecode.clone().map(Into::into).map(Cow::Owned),
+                eravm.bytecode.clone().map(Into::into).map(Cow::Owned),
+                eravm.bytecode.clone().map(Into::into).map(Cow::Owned),
             )
         } else {
             (None, None)
@@ -66,7 +119,8 @@ impl<'a> From<&'a Contract> for CompactContractBytecodeCow<'a> {
 
 impl From<Contract> for CompactContractBytecode {
     fn from(c: Contract) -> Self {
-        let bytecode = if let Some(evm) = c.evm { evm.bytecode } else { None };
+        let c = c.0;
+        let bytecode = if let Some(eravm) = c.eravm { eravm.bytecode } else { None };
         Self {
             abi: c.abi.map(Into::into),
             deployed_bytecode: bytecode.clone().map(|b| b.into()),
@@ -77,8 +131,9 @@ impl From<Contract> for CompactContractBytecode {
 
 impl<'a> From<&'a Contract> for CompactContractRef<'a> {
     fn from(c: &'a Contract) -> Self {
-        let (bin, bin_runtime) = if let Some(ref evm) = c.evm {
-            (evm.bytecode.as_ref().map(|c| &c.object), evm.bytecode.as_ref().map(|c| &c.object))
+        let c = &c.0;
+        let (bin, bin_runtime) = if let Some(ref eravm) = c.eravm {
+            (eravm.bytecode.as_ref().map(|c| &c.object), eravm.bytecode.as_ref().map(|c| &c.object))
         } else {
             (None, None)
         };
