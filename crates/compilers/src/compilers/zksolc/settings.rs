@@ -36,6 +36,16 @@ pub enum ZkSolcWarning {
     TxOrigin,
 }
 
+impl FromStr for ZkSolcWarning {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "txorigin" => Ok(Self::TxOrigin),
+            s => Err(format!("Unknown zksolc warning: {s}")),
+        }
+    }
+}
+
 /// `zksolc` errors that can be suppressed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -44,6 +54,16 @@ pub enum ZkSolcError {
     /// `sendtransfer` error: Using `send()` or `transfer()` methods on `address payable` instead
     /// of `call()`.
     SendTransfer,
+}
+
+impl FromStr for ZkSolcError {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "sendtransfer" => Ok(Self::SendTransfer),
+            s => Err(format!("Unknown zksolc error: {s}")),
+        }
+    }
 }
 
 /// zksolc standard json input settings. See:
