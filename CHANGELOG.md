@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.6](https://github.com/foundry-rs/compilers/releases/tag/v0.11.6) - 2024-10-16
+
+### Bug Fixes
+
+- Correctly handle b as pre-release in Vyper version ([#213](https://github.com/foundry-rs/compilers/issues/213))
+- Accept partial first sourcemap element ([#209](https://github.com/foundry-rs/compilers/issues/209))
+
+### Miscellaneous Tasks
+
+- Release 0.11.5
+- Allow adding vyper sources with `add_raw_source` w/ `.vy` / `.vyi` extension ([#211](https://github.com/foundry-rs/compilers/issues/211))
+- [`ci`] Fix deny (add `ZLib` exception) ([#212](https://github.com/foundry-rs/compilers/issues/212))
+
 ## [0.11.4](https://github.com/foundry-rs/compilers/releases/tag/v0.11.4) - 2024-10-02
 
 ### Bug Fixes
@@ -28,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Miscellaneous Tasks
 
+- Release 0.11.4
 - Release 0.11.3
 - Proper generate legacy asm extra output file ([#207](https://github.com/foundry-rs/compilers/issues/207))
 - Release 0.11.2
