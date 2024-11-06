@@ -6,14 +6,13 @@ use foundry_compilers_artifacts_solc::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-#[serde(transparent)]
 pub struct Bytecode {
     pub object: BytecodeObject,
 
     /// This value is not part of the compiler output json
     ///
     /// It will be populated if the contract has any missing library
-    #[serde(skip, default)]
+    #[serde(default)]
     pub missing_libraries: Vec<String>,
 }
 

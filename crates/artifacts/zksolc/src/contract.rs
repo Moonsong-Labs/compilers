@@ -8,35 +8,11 @@ use foundry_compilers_artifacts_solc::{
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, collections::BTreeMap};
 
-pub fn maybe_unlinked_contract<'de, D>(deserializer: D) -> Result<RawContract, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct RawContractWithLibs {
-        #[serde(default)]
-        pub missing_libraries: Vec<String>,
-        #[serde(flatten)]
-        pub contract: RawContract,
-    }
-
-    let RawContractWithLibs { missing_libraries, mut contract } =
-        RawContractWithLibs::deserialize(deserializer)?;
-
-    if !missing_libraries.is_empty() {
-        if let Some(bc) = contract.eravm.as_mut().and_then(|eravm| eravm.bytecode.as_mut()) {
-            bc.missing_libraries = missing_libraries;
-            bc.mark_as_unlinked();
-        }
-    }
-
-    Ok(contract)
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(transparent)]
-pub struct Contract(#[serde(deserialize_with = "maybe_unlinked_contract")] pub RawContract);
+pub struct Contract(
+    #[serde(deserialize_with = "crate::serde_helpers::maybe_unlinked_contract")] pub RawContract,
+);
 
 impl std::ops::Deref for Contract {
     type Target = RawContract;

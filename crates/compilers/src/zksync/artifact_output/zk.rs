@@ -15,7 +15,6 @@ use foundry_compilers_artifacts::{
     zksolc::{
         bytecode::Bytecode,
         contract::{Contract, RawContract},
-        EraVM,
     },
     SolcLanguage,
 };
@@ -52,11 +51,15 @@ pub struct ZkContractArtifact {
     pub hash: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub factory_dependencies: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    pub missing_libraries: Vec<String>,
     /// The identifier of the source file
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<u32>,
+}
+
+impl ZkContractArtifact {
+    pub fn missing_libraries(&self) -> Option<&Vec<String>> {
+        self.bytecode.as_ref().map(|bc| &bc.missing_libraries)
+    }
 }
 
 // CompactContract variants
@@ -134,10 +137,6 @@ impl ZkArtifactOutput {
         contract: Contract,
         source_file: Option<&SourceFile>,
     ) -> ZkContractArtifact {
-        let mut artifact_bytecode = None;
-        let mut artifact_assembly = None;
-        let mut artifact_missing_libraries = vec![];
-
         let RawContract {
             abi,
             metadata,
@@ -150,29 +149,21 @@ impl ZkArtifactOutput {
             factory_dependencies,
         } = contract.0;
 
-        if let Some(evm) = eravm {
-            let EraVM { assembly, bytecode, .. } = evm;
-
-            if let Some(mut bc) = bytecode {
-                std::mem::swap(&mut bc.missing_libraries, &mut artifact_missing_libraries);
-                artifact_bytecode = Some(bc.into());
-            }
-            artifact_assembly = assembly;
-        }
+        let (bytecode, assembly) =
+            eravm.map(|eravm| (eravm.bytecode, eravm.assembly)).unwrap_or_else(|| (None, None));
 
         ZkContractArtifact {
             abi,
             hash,
             factory_dependencies,
             storage_layout: Some(storage_layout),
-            bytecode: artifact_bytecode,
-            assembly: artifact_assembly,
+            bytecode,
+            assembly,
             metadata,
             userdoc: Some(userdoc),
             devdoc: Some(devdoc),
             ir_optimized,
             id: source_file.as_ref().map(|s| s.id),
-            missing_libraries: artifact_missing_libraries,
         }
     }
 

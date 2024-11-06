@@ -13,6 +13,7 @@ pub mod bytecode;
 pub mod contract;
 pub mod error;
 pub mod output_selection;
+mod serde_helpers;
 
 use self::{bytecode::Bytecode, contract::Contract, error::Error};
 
@@ -97,7 +98,11 @@ pub struct EraVM {
     pub assembly: Option<String>,
     /// The contract bytecode.
     /// Is reset by that of EraVM before yielding the compiled project artifacts.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "serde_helpers::opt_maybe_unwrapped_bytecode"
+    )]
     pub bytecode: Option<Bytecode>,
 }
 
