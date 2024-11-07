@@ -12,10 +12,7 @@ use foundry_compilers_artifacts::{
         CompactBytecode, CompactContract, CompactContractBytecode, CompactContractBytecodeCow,
         CompactDeployedBytecode,
     },
-    zksolc::{
-        bytecode::Bytecode,
-        contract::{Contract, RawContract},
-    },
+    zksolc::contract::Contract,
     SolcLanguage,
 };
 use path_slash::PathBufExt;
@@ -27,12 +24,15 @@ use std::{
     path::Path,
 };
 
+mod bytecode;
+pub use bytecode::ZkArtifactBytecode;
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ZkContractArtifact {
     pub abi: Option<JsonAbi>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bytecode: Option<Bytecode>,
+    pub bytecode: Option<ZkArtifactBytecode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assembly: Option<String>,
     // #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -137,7 +137,7 @@ impl ZkArtifactOutput {
         contract: Contract,
         source_file: Option<&SourceFile>,
     ) -> ZkContractArtifact {
-        let RawContract {
+        let Contract {
             abi,
             metadata,
             userdoc,
@@ -147,10 +147,12 @@ impl ZkArtifactOutput {
             ir_optimized,
             hash,
             factory_dependencies,
-        } = contract.0;
+            missing_libraries,
+        } = contract;
 
         let (bytecode, assembly) =
             eravm.map(|eravm| (eravm.bytecode, eravm.assembly)).unwrap_or_else(|| (None, None));
+        let bytecode = bytecode.map(|object| ZkArtifactBytecode { object, missing_libraries });
 
         ZkContractArtifact {
             abi,

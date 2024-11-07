@@ -2,36 +2,16 @@
 use crate::EraVM;
 use alloy_json_abi::JsonAbi;
 use foundry_compilers_artifacts_solc::{
-    CompactContractBytecode, CompactContractBytecodeCow, CompactContractRef, DevDoc, StorageLayout,
-    UserDoc,
+    Bytecode, BytecodeObject, CompactBytecode, CompactContractBytecode, CompactContractBytecodeCow,
+    CompactContractRef, CompactDeployedBytecode, DevDoc, Offsets, StorageLayout, UserDoc,
 };
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, collections::BTreeMap};
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(transparent)]
-pub struct Contract(
-    #[serde(deserialize_with = "crate::serde_helpers::maybe_unlinked_contract")] pub RawContract,
-);
-
-impl std::ops::Deref for Contract {
-    type Target = RawContract;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::ops::DerefMut for Contract {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
 /// Represents a compiled solidity contract
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct RawContract {
+pub struct Contract {
     pub abi: Option<JsonAbi>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
@@ -54,17 +34,66 @@ pub struct RawContract {
     /// EVM-related outputs
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub eravm: Option<EraVM>,
+    /// The contract's unlinked libraries
+    #[serde(default)]
+    pub missing_libraries: Vec<String>,
 }
 
-impl RawContract {
+impl Contract {
     pub fn is_unlinked(&self) -> bool {
-        self.hash.is_none()
-            || self
-                .eravm
-                .as_ref()
-                .and_then(|eravm| eravm.bytecode.as_ref())
-                .map(|bc| !bc.missing_libraries.is_empty())
-                .unwrap_or_default()
+        self.hash.is_none() || !self.missing_libraries.is_empty()
+    }
+
+    pub fn parse_link_references(
+        missing_libraries: &[String],
+    ) -> BTreeMap<String, BTreeMap<String, Vec<Offsets>>> {
+        missing_libraries
+            .iter()
+            .map(|file_and_lib| {
+                let mut parts = file_and_lib.split(':');
+                let filename = parts.next().expect("missing library contract file (<file>:<name>)");
+                let contract = parts.next().expect("missing library contract name (<file>:<name>)");
+                (filename.to_owned(), contract.to_owned())
+            })
+            .fold(BTreeMap::default(), |mut acc, (filename, contract)| {
+                acc.entry(filename)
+                    .or_default()
+                    //empty offsets since we can't patch it anyways
+                    .insert(contract, vec![]);
+                acc
+            })
+    }
+
+    fn link_references(&self) -> BTreeMap<String, BTreeMap<String, Vec<Offsets>>> {
+        Self::parse_link_references(self.missing_libraries.as_slice())
+    }
+
+    pub fn bytecode(&self) -> Option<Bytecode> {
+        self.eravm
+            .as_ref()
+            .and_then(|eravm| eravm.bytecode.as_ref())
+            .map(|object| {
+                match (self.is_unlinked(), object) {
+                    (true, BytecodeObject::Bytecode(bc)) => {
+                        //convert to unlinked
+                        let encoded = alloy_primitives::hex::encode(bc);
+                        BytecodeObject::Unlinked(encoded)
+                    }
+                    (false, BytecodeObject::Unlinked(bc)) => {
+                        //convert to linked
+                        let bytecode = alloy_primitives::hex::decode(bc).expect("valid bytecode");
+                        BytecodeObject::Bytecode(bytecode.into())
+                    }
+                    (true, BytecodeObject::Unlinked(_)) | (false, BytecodeObject::Bytecode(_)) => {
+                        object.to_owned()
+                    }
+                }
+            })
+            .map(|object| {
+                let mut bytecode: Bytecode = object.into();
+                bytecode.link_references = self.link_references();
+                bytecode
+            })
     }
 }
 
@@ -77,39 +106,35 @@ impl RawContract {
 // Ideally the Artifacts trait would not be coupled to a specific Contract type
 impl<'a> From<&'a Contract> for CompactContractBytecodeCow<'a> {
     fn from(artifact: &'a Contract) -> Self {
-        let (bytecode, deployed_bytecode) = if let Some(ref eravm) = artifact.eravm {
-            (
-                eravm.bytecode.clone().map(Into::into).map(Cow::Owned),
-                eravm.bytecode.clone().map(Into::into).map(Cow::Owned),
-            )
-        } else {
-            (None, None)
-        };
+        let bc = artifact.bytecode();
+        let bytecode = bc.clone().map(|bc| CompactBytecode {
+            object: bc.object,
+            source_map: None,
+            link_references: bc.link_references,
+        });
+        let deployed_bytecode = bytecode.clone().map(|bytecode| CompactDeployedBytecode {
+            bytecode: Some(bytecode),
+            immutable_references: Default::default(),
+        });
+
         CompactContractBytecodeCow {
             abi: artifact.abi.as_ref().map(Cow::Borrowed),
-            bytecode,
-            deployed_bytecode,
+            bytecode: bytecode.map(Cow::Owned),
+            deployed_bytecode: deployed_bytecode.map(Cow::Owned),
         }
     }
 }
 
 impl From<Contract> for CompactContractBytecode {
     fn from(c: Contract) -> Self {
-        let c = c.0;
-        let bytecode = if let Some(eravm) = c.eravm { eravm.bytecode } else { None };
-        Self {
-            abi: c.abi.map(Into::into),
-            deployed_bytecode: bytecode.clone().map(|b| b.into()),
-            bytecode: bytecode.clone().map(|b| b.into()),
-        }
+        CompactContractBytecodeCow::from(&c).into()
     }
 }
 
 impl<'a> From<&'a Contract> for CompactContractRef<'a> {
     fn from(c: &'a Contract) -> Self {
-        let c = &c.0;
         let (bin, bin_runtime) = if let Some(ref eravm) = c.eravm {
-            (eravm.bytecode.as_ref().map(|c| &c.object), eravm.bytecode.as_ref().map(|c| &c.object))
+            (eravm.bytecode.as_ref(), eravm.bytecode.as_ref())
         } else {
             (None, None)
         };
