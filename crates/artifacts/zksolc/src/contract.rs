@@ -44,7 +44,7 @@ impl Contract {
         self.hash.is_none() || !self.missing_libraries.is_empty()
     }
 
-    pub fn parse_link_references(
+    pub fn missing_libs_to_link_references(
         missing_libraries: &[String],
     ) -> BTreeMap<String, BTreeMap<String, Vec<Offsets>>> {
         missing_libraries
@@ -65,7 +65,7 @@ impl Contract {
     }
 
     fn link_references(&self) -> BTreeMap<String, BTreeMap<String, Vec<Offsets>>> {
-        Self::parse_link_references(self.missing_libraries.as_slice())
+        Self::missing_libs_to_link_references(self.missing_libraries.as_slice())
     }
 
     pub fn bytecode(&self) -> Option<Bytecode> {

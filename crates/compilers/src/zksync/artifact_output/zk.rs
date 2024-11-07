@@ -35,8 +35,6 @@ pub struct ZkContractArtifact {
     pub bytecode: Option<ZkArtifactBytecode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assembly: Option<String>,
-    // #[serde(default, skip_serializing_if = "Option::is_none")]
-    // pub method_identifiers: Option<BTreeMap<String, String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

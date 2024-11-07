@@ -729,7 +729,7 @@ mod tests {
         let out = zksolc().compile(&input).unwrap();
         let (_, mut contracts) = out.split();
         let contract = contracts.remove("LinkTest").unwrap();
-        let bytecode = &contract.0.eravm.unwrap().bytecode.unwrap().object;
+        let bytecode = &contract.eravm.unwrap().bytecode.unwrap();
         assert!(!bytecode.is_unlinked());
     }
 
@@ -742,7 +742,7 @@ mod tests {
         let out = zksolc().compile(&input).unwrap();
         let (_, mut contracts) = out.split();
         let contract = contracts.remove("LinkTest").unwrap();
-        let bytecode = &contract.0.eravm.unwrap().bytecode.unwrap().object;
+        let bytecode = &contract.eravm.unwrap().bytecode.unwrap();
         assert!(!bytecode.is_unlinked());
     }
 }

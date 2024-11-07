@@ -15,11 +15,11 @@ pub struct ZkArtifactBytecode {
 
 impl ZkArtifactBytecode {
     fn link_references(&self) -> BTreeMap<String, BTreeMap<String, Vec<Offsets>>> {
-        Contract::parse_link_references(self.missing_libraries.as_slice())
+        Contract::missing_libs_to_link_references(self.missing_libraries.as_slice())
     }
 }
 
-// NOTE: distinction between bytecode and deployed bytecode make no sense of zkEvm, but
+// NOTE: distinction between bytecode and deployed bytecode makes no sense of zkEvm, but
 // we implement these conversions in order to be able to use the Artifacts trait.
 impl From<ZkArtifactBytecode> for CompactBytecode {
     fn from(bcode: ZkArtifactBytecode) -> Self {
