@@ -302,6 +302,7 @@ impl ZkSolc {
         let output = std::str::from_utf8(&output).map_err(|_| SolcError::InvalidUtf8)?;
 
         let mut compiler_output: CompilerOutput = serde_json::from_str(output)?;
+
         // Add zksync version so that there's some way to identify if zksync solc was used
         // by looking at build info
         compiler_output.zksync_solc_version = self.solc_version_info.zksync_version.clone();
@@ -728,7 +729,7 @@ mod tests {
         let out = zksolc().compile(&input).unwrap();
         let (_, mut contracts) = out.split();
         let contract = contracts.remove("LinkTest").unwrap();
-        let bytecode = &contract.evm.unwrap().bytecode.unwrap().object;
+        let bytecode = contract.bytecode().unwrap().object;
         assert!(!bytecode.is_unlinked());
     }
 
@@ -741,7 +742,7 @@ mod tests {
         let out = zksolc().compile(&input).unwrap();
         let (_, mut contracts) = out.split();
         let contract = contracts.remove("LinkTest").unwrap();
-        let bytecode = &contract.evm.unwrap().bytecode.unwrap().object;
+        let bytecode = contract.bytecode().unwrap().object;
         assert!(!bytecode.is_unlinked());
     }
 }

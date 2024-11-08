@@ -1,5 +1,5 @@
 use foundry_compilers_artifacts_solc::{
-    CompactContractRef, FileToContractsMap, SourceFile, SourceFiles,
+    Bytecode, BytecodeObject, CompactContractRef, FileToContractsMap, SourceFile, SourceFiles,
 };
 
 use semver::Version;
@@ -9,12 +9,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub mod bytecode;
 pub mod contract;
 pub mod error;
 pub mod output_selection;
 
-use self::{bytecode::Bytecode, contract::Contract, error::Error};
+use self::{contract::Contract, error::Error};
 
 /// file -> (contract name -> Contract)
 pub type Contracts = FileToContractsMap<Contract>;
@@ -107,6 +106,36 @@ pub struct Evm {
     /// The extra EVMLA metadata.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extra_metadata: Option<ExtraMetadata>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct EraVM {
+    /// The contract EraVM assembly code.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assembly: Option<String>,
+    /// The contract bytecode.
+    /// Is reset by that of EraVM before yielding the compiled project artifacts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    bytecode: Option<BytecodeObject>,
+}
+
+impl EraVM {
+    pub fn bytecode(&self, should_be_unlinked: bool) -> Option<BytecodeObject> {
+        self.bytecode.as_ref().map(|object| match (should_be_unlinked, object) {
+            (true, BytecodeObject::Bytecode(bc)) => {
+                // convert to unlinked
+                let encoded = alloy_primitives::hex::encode(bc);
+                BytecodeObject::Unlinked(encoded)
+            }
+            (false, BytecodeObject::Unlinked(bc)) => {
+                // convert to linked
+                let bytecode = alloy_primitives::hex::decode(bc).expect("valid bytecode");
+                BytecodeObject::Bytecode(bytecode.into())
+            }
+            _ => object.to_owned(),
+        })
+    }
 }
 
 ///
