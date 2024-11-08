@@ -1,5 +1,5 @@
 use foundry_compilers_artifacts_solc::{
-    CompactContractRef, FileToContractsMap, SourceFile, SourceFiles,
+    BytecodeObject, CompactContractRef, FileToContractsMap, SourceFile, SourceFiles,
 };
 
 use semver::Version;
@@ -9,12 +9,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub mod bytecode;
 pub mod contract;
 pub mod error;
 pub mod output_selection;
 
-use self::{bytecode::Bytecode, contract::Contract, error::Error};
+use self::{contract::Contract, error::Error};
 
 /// file -> (contract name -> Contract)
 pub type Contracts = FileToContractsMap<Contract>;
@@ -91,22 +90,14 @@ impl CompilerOutput {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct Evm {
+pub struct EraVM {
     /// The contract EraVM assembly code.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assembly: Option<String>,
-    /// The contract EVM legacy assembly code.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub legacy_assembly: Option<serde_json::Value>,
     /// The contract bytecode.
     /// Is reset by that of EraVM before yielding the compiled project artifacts.
-    pub bytecode: Option<Bytecode>,
-    /// The list of function hashes
-    #[serde(default, skip_serializing_if = "::std::collections::BTreeMap::is_empty")]
-    pub method_identifiers: BTreeMap<String, String>,
-    /// The extra EVMLA metadata.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub extra_metadata: Option<ExtraMetadata>,
+    pub bytecode: Option<BytecodeObject>,
 }
 
 ///

@@ -12,7 +12,7 @@ use foundry_compilers_artifacts::{
         CompactBytecode, CompactContract, CompactContractBytecode, CompactContractBytecodeCow,
         CompactDeployedBytecode,
     },
-    zksolc::{bytecode::Bytecode, contract::Contract, Evm},
+    zksolc::contract::Contract,
     SolcLanguage,
 };
 use path_slash::PathBufExt;
@@ -24,18 +24,17 @@ use std::{
     path::Path,
 };
 
+mod bytecode;
+pub use bytecode::ZkArtifactBytecode;
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ZkContractArtifact {
     pub abi: Option<JsonAbi>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bytecode: Option<Bytecode>,
+    pub bytecode: Option<ZkArtifactBytecode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assembly: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub method_identifiers: Option<BTreeMap<String, String>>,
-    //#[serde(default, skip_serializing_if = "Vec::is_empty")]
-    //pub generated_sources: Vec<GeneratedSource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -50,11 +49,15 @@ pub struct ZkContractArtifact {
     pub hash: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub factory_dependencies: Option<BTreeMap<String, String>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub missing_libraries: Option<Vec<String>>,
     /// The identifier of the source file
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<u32>,
+}
+
+impl ZkContractArtifact {
+    pub fn missing_libraries(&self) -> Option<&Vec<String>> {
+        self.bytecode.as_ref().map(|bc| &bc.missing_libraries)
+    }
 }
 
 // CompactContract variants
@@ -132,46 +135,30 @@ impl ZkArtifactOutput {
         contract: Contract,
         source_file: Option<&SourceFile>,
     ) -> ZkContractArtifact {
-        let mut artifact_bytecode = None;
-        let mut artifact_method_identifiers = None;
-        let mut artifact_assembly = None;
-
         let Contract {
             abi,
             metadata,
             userdoc,
             devdoc,
             storage_layout,
-            evm,
+            eravm,
             ir_optimized,
             hash,
             factory_dependencies,
             missing_libraries,
         } = contract;
 
-        if let Some(evm) = evm {
-            let Evm {
-                assembly,
-                bytecode,
-                method_identifiers,
-                extra_metadata: _,
-                legacy_assembly: _,
-            } = evm;
-
-            artifact_bytecode = bytecode.map(Into::into);
-            artifact_method_identifiers = Some(method_identifiers);
-            artifact_assembly = assembly;
-        }
+        let (bytecode, assembly) =
+            eravm.map(|eravm| (eravm.bytecode, eravm.assembly)).unwrap_or_else(|| (None, None));
+        let bytecode = bytecode.map(|object| ZkArtifactBytecode { object, missing_libraries });
 
         ZkContractArtifact {
             abi,
             hash,
             factory_dependencies,
-            missing_libraries,
             storage_layout: Some(storage_layout),
-            bytecode: artifact_bytecode,
-            assembly: artifact_assembly,
-            method_identifiers: artifact_method_identifiers,
+            bytecode,
+            assembly,
             metadata,
             userdoc: Some(userdoc),
             devdoc: Some(devdoc),
