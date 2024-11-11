@@ -36,11 +36,11 @@ impl ZkArtifactBytecode {
 
     pub fn object(&self) -> BytecodeObject {
         if self.is_unlinked {
-            //convert to unlinked
+            // convert to unlinked
             let encoded = alloy_primitives::hex::encode(&self.object);
             BytecodeObject::Unlinked(encoded)
         } else {
-            //convert to linked
+            // convert to linked
             BytecodeObject::Bytecode(self.object.clone())
         }
     }

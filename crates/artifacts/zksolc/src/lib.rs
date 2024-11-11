@@ -104,12 +104,12 @@ impl EraVM {
     pub fn bytecode(&self, should_be_unlinked: bool) -> Option<BytecodeObject> {
         self.bytecode.as_ref().map(|object| match (should_be_unlinked, object) {
             (true, BytecodeObject::Bytecode(bc)) => {
-                //convert to unlinked
+                // convert to unlinked
                 let encoded = alloy_primitives::hex::encode(bc);
                 BytecodeObject::Unlinked(encoded)
             }
             (false, BytecodeObject::Unlinked(bc)) => {
-                //convert to linked
+                // convert to linked
                 let bytecode = alloy_primitives::hex::decode(bc).expect("valid bytecode");
                 BytecodeObject::Bytecode(bytecode.into())
             }
