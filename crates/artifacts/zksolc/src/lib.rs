@@ -113,9 +113,7 @@ impl EraVM {
                 let bytecode = alloy_primitives::hex::decode(bc).expect("valid bytecode");
                 BytecodeObject::Bytecode(bytecode.into())
             }
-            (true, BytecodeObject::Unlinked(_)) | (false, BytecodeObject::Bytecode(_)) => {
-                object.to_owned()
-            }
+            _ => object.to_owned(),
         })
     }
 }

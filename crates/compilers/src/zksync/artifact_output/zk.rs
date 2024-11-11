@@ -95,8 +95,8 @@ impl From<ZkContractArtifact> for CompactContract {
     fn from(c: ZkContractArtifact) -> Self {
         // TODO: c.abi might have None, we need to get this field from solc_metadata
         Self {
-            bin: c.bytecode.clone().map(|b| b.object),
-            bin_runtime: c.bytecode.clone().map(|b| b.object),
+            bin: c.bytecode.clone().map(|b| b.object()),
+            bin_runtime: c.bytecode.clone().map(|b| b.object()),
             abi: c.abi,
         }
     }
@@ -152,7 +152,8 @@ impl ZkArtifactOutput {
         let (bytecode, assembly) = eravm
             .map(|eravm| (eravm.bytecode(is_unlinked), eravm.assembly))
             .unwrap_or_else(|| (None, None));
-        let bytecode = bytecode.map(|object| ZkArtifactBytecode { object, missing_libraries });
+        let bytecode = bytecode
+            .map(|object| ZkArtifactBytecode::with_object(object, is_unlinked, missing_libraries));
 
         ZkContractArtifact {
             abi,
