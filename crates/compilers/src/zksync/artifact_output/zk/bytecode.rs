@@ -30,7 +30,7 @@ impl ZkArtifactBytecode {
         Self { object, is_unlinked, missing_libraries }
     }
 
-    fn link_references(&self) -> BTreeMap<String, BTreeMap<String, Vec<Offsets>>> {
+    pub fn link_references(&self) -> BTreeMap<String, BTreeMap<String, Vec<Offsets>>> {
         Contract::missing_libs_to_link_references(self.missing_libraries.as_slice())
     }
 
