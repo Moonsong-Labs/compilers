@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::artifacts::zksolc::contract::Contract;
+use alloy_primitives::Bytes;
 use foundry_compilers_artifacts::{
     BytecodeObject, CompactBytecode, CompactDeployedBytecode, Offsets,
 };
@@ -8,15 +9,41 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ZkArtifactBytecode {
-    pub object: BytecodeObject,
+    object: Bytes,
+    is_unlinked: bool,
 
     #[serde(default)]
     pub missing_libraries: Vec<String>,
 }
 
 impl ZkArtifactBytecode {
+    pub fn with_object(
+        object: BytecodeObject,
+        is_unlinked: bool,
+        missing_libraries: Vec<String>,
+    ) -> Self {
+        let object = match object {
+            BytecodeObject::Bytecode(bc) => bc,
+            BytecodeObject::Unlinked(s) => {
+                alloy_primitives::hex::decode(s).expect("valid bytecode").into()
+            }
+        };
+        Self { object, is_unlinked, missing_libraries }
+    }
+
     fn link_references(&self) -> BTreeMap<String, BTreeMap<String, Vec<Offsets>>> {
         Contract::missing_libs_to_link_references(self.missing_libraries.as_slice())
+    }
+
+    pub fn object(&self) -> BytecodeObject {
+        if self.is_unlinked {
+            // convert to unlinked
+            let encoded = alloy_primitives::hex::encode(&self.object);
+            BytecodeObject::Unlinked(encoded)
+        } else {
+            // convert to linked
+            BytecodeObject::Bytecode(self.object.clone())
+        }
     }
 }
 
@@ -25,7 +52,7 @@ impl ZkArtifactBytecode {
 impl From<ZkArtifactBytecode> for CompactBytecode {
     fn from(bcode: ZkArtifactBytecode) -> Self {
         let link_references = bcode.link_references();
-        Self { object: bcode.object, source_map: None, link_references }
+        Self { object: bcode.object(), source_map: None, link_references }
     }
 }
 

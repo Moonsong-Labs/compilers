@@ -62,14 +62,14 @@ impl CompilerContract for Contract {
     }
     fn bin_ref(&self) -> Option<&BytecodeObject> {
         if let Some(ref eravm) = self.eravm {
-            eravm.bytecode.as_ref()
+            eravm.bytecode_ref()
         } else {
             None
         }
     }
     fn bin_runtime_ref(&self) -> Option<&BytecodeObject> {
         if let Some(ref eravm) = self.eravm {
-            eravm.bytecode.as_ref()
+            eravm.bytecode_ref()
         } else {
             None
         }
@@ -777,7 +777,7 @@ mod tests {
         let out = zksolc().compile(&input).unwrap();
         let (_, mut contracts) = out.split();
         let contract = contracts.remove("LinkTest").unwrap();
-        let bytecode = &contract.eravm.unwrap().bytecode.unwrap();
+        let bytecode = contract.bytecode().unwrap().object;
         assert!(!bytecode.is_unlinked());
     }
 
@@ -790,7 +790,7 @@ mod tests {
         let out = zksolc().compile(&input).unwrap();
         let (_, mut contracts) = out.split();
         let contract = contracts.remove("LinkTest").unwrap();
-        let bytecode = &contract.eravm.unwrap().bytecode.unwrap();
+        let bytecode = contract.bytecode().unwrap().object;
         assert!(!bytecode.is_unlinked());
     }
 }

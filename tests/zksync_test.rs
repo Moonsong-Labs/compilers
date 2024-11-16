@@ -591,7 +591,7 @@ fn zksync_can_compile_yul_sample() {
         .clone()
         .unwrap();
 
-    let yul_bytecode = simple_store_artifact.object.as_bytes().unwrap();
+    let yul_bytecode = simple_store_artifact.object().into_bytes().unwrap();
 
     assert!(!yul_bytecode.is_empty(), "SimpleStore.yul bytecode is empty");
 }

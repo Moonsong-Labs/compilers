@@ -2,7 +2,7 @@
 use crate::artifacts::zksolc::EraVM;
 use alloy_json_abi::JsonAbi;
 use foundry_compilers_artifacts_solc::{
-    Bytecode, BytecodeObject, CompactBytecode, CompactContractBytecode, CompactContractBytecodeCow,
+    Bytecode, CompactBytecode, CompactContractBytecode, CompactContractBytecodeCow,
     CompactContractRef, CompactDeployedBytecode, DevDoc, Offsets, StorageLayout, UserDoc,
 };
 use serde::{Deserialize, Serialize};
@@ -73,31 +73,11 @@ impl Contract {
     }
 
     pub fn bytecode(&self) -> Option<Bytecode> {
-        self.eravm
-            .as_ref()
-            .and_then(|eravm| eravm.bytecode.as_ref())
-            .map(|object| {
-                match (self.is_unlinked(), object) {
-                    (true, BytecodeObject::Bytecode(bc)) => {
-                        //convert to unlinked
-                        let encoded = alloy_primitives::hex::encode(bc);
-                        BytecodeObject::Unlinked(encoded)
-                    }
-                    (false, BytecodeObject::Unlinked(bc)) => {
-                        //convert to linked
-                        let bytecode = alloy_primitives::hex::decode(bc).expect("valid bytecode");
-                        BytecodeObject::Bytecode(bytecode.into())
-                    }
-                    (true, BytecodeObject::Unlinked(_)) | (false, BytecodeObject::Bytecode(_)) => {
-                        object.to_owned()
-                    }
-                }
-            })
-            .map(|object| {
-                let mut bytecode: Bytecode = object.into();
-                bytecode.link_references = self.link_references();
-                bytecode
-            })
+        self.eravm.as_ref().and_then(|eravm| eravm.bytecode(self.is_unlinked())).map(|object| {
+            let mut bytecode: Bytecode = object.into();
+            bytecode.link_references = self.link_references();
+            bytecode
+        })
     }
 }
 

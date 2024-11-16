@@ -97,7 +97,31 @@ pub struct EraVM {
     /// The contract bytecode.
     /// Is reset by that of EraVM before yielding the compiled project artifacts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bytecode: Option<BytecodeObject>,
+    bytecode: Option<BytecodeObject>,
+}
+
+impl EraVM {
+    pub fn bytecode(&self, should_be_unlinked: bool) -> Option<BytecodeObject> {
+        self.bytecode.as_ref().map(|object| match (should_be_unlinked, object) {
+            (true, BytecodeObject::Bytecode(bc)) => {
+                // convert to unlinked
+                let encoded = alloy_primitives::hex::encode(bc);
+                BytecodeObject::Unlinked(encoded)
+            }
+            (false, BytecodeObject::Unlinked(bc)) => {
+                // convert to linked
+                let bytecode = alloy_primitives::hex::decode(bc).expect("valid bytecode");
+                BytecodeObject::Bytecode(bytecode.into())
+            }
+            _ => object.to_owned(),
+        })
+    }
+
+    // TODO: tmp to make compiler abstraction sample work, needs some thought on
+    // how do transform linked/to unlinked
+    pub fn bytecode_ref(&self) -> Option<&BytecodeObject> {
+        self.bytecode.as_ref()
+    }
 }
 
 ///
