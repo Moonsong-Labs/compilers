@@ -6,36 +6,39 @@ use std::{
 };
 
 use foundry_compilers::{
-    buildinfo::BuildInfo,
-    cache::CompilerCache,
-    project_util::*,
-    resolver::parse::SolData,
-    zksolc::{
-        input::ZkSolcInput,
-        settings::{ZkSolcError, ZkSolcWarning},
-        ZkSolc, ZkSolcCompiler, ZkSolcSettings,
-    },
-    zksync::{self, artifact_output::zk::ZkArtifactOutput},
-    Graph, ProjectBuilder, ProjectPathsConfig,
+    buildinfo::BuildInfo, cache::CompilerCache, project_util::*, resolver::parse::SolData,
+    CompilerOutput, Graph, ProjectBuilder, ProjectPathsConfig,
 };
 use foundry_compilers_artifacts::Remapping;
 
+use foundry_compilers_zksync::{
+    artifacts::zksolc::{contract::Contract, error::Error},
+    compilers::{
+        compilers::zksolc::{
+            input::ZkSolcInput,
+            settings::{ZkSolcError, ZkSolcWarning},
+            ZkSolc, ZkSolcCompiler, ZkSolcSettings,
+        },
+        zksync::artifact_output::zk::ZkArtifactOutput,
+    },
+};
+
 #[test]
 fn zksync_can_compile_dapp_sample() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .try_init()
-        .ok();
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test-data/dapp-sample");
+    // let _ = tracing_subscriber::fmt()
+    //     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    //     .try_init()
+    //     .ok();
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test-data/dapp-sample");
     let paths = ProjectPathsConfig::builder().sources(root.join("src")).lib(root.join("lib"));
     let project = TempProject::<ZkSolcCompiler, ZkArtifactOutput>::new(paths).unwrap();
 
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     assert!(compiled.find_first("Dapp").is_some());
     compiled.assert_success();
 
     // nothing to compile
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     assert!(compiled.find_first("Dapp").is_some());
     assert!(compiled.is_unchanged());
 
@@ -43,7 +46,8 @@ fn zksync_can_compile_dapp_sample() {
 
     // delete artifacts
     std::fs::remove_dir_all(&project.paths().artifacts).unwrap();
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    //let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     assert!(compiled.find_first("Dapp").is_some());
     assert!(!compiled.is_unchanged());
 
@@ -52,10 +56,10 @@ fn zksync_can_compile_dapp_sample() {
 }
 
 fn test_zksync_can_compile_contract_with_suppressed_errors(compiler: ZkSolcCompiler) {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .try_init()
-        .ok();
+    // let _ = tracing_subscriber::fmt()
+    //     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    //     .try_init()
+    //     .ok();
     let mut project = TempProject::<ZkSolcCompiler, ZkArtifactOutput>::dapptools().unwrap();
     project.project_mut().compiler = compiler;
 
@@ -75,13 +79,13 @@ fn test_zksync_can_compile_contract_with_suppressed_errors(compiler: ZkSolcCompi
         )
         .unwrap();
 
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     assert!(compiled.has_compiler_errors());
 
     project.project_mut().settings.settings.suppressed_errors =
         HashSet::from([ZkSolcError::SendTransfer]);
 
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     compiled.assert_success();
     assert!(compiled.find_first("Erroneous").is_some());
 }
@@ -101,10 +105,10 @@ fn zksync_pre_1_5_7_can_compile_contract_with_suppressed_errors() {
 }
 
 fn test_zksync_can_compile_contract_with_suppressed_warnings(compiler: ZkSolcCompiler) {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .try_init()
-        .ok();
+    // let _ = tracing_subscriber::fmt()
+    //     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    //     .try_init()
+    //     .ok();
     let mut project = TempProject::<ZkSolcCompiler, ZkArtifactOutput>::dapptools().unwrap();
     project.project_mut().compiler = compiler;
 
@@ -123,32 +127,32 @@ fn test_zksync_can_compile_contract_with_suppressed_warnings(compiler: ZkSolcCom
         )
         .unwrap();
 
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     compiled.assert_success();
     assert!(
         compiled
-            .compiler_output
+            .output()
             .errors
             .iter()
             .any(|err| err.is_warning() && err.message.contains("tx.origin")),
         "{:#?}",
-        compiled.compiler_output.errors
+        compiled.output().errors
     );
 
     project.project_mut().settings.settings.suppressed_warnings =
         HashSet::from([ZkSolcWarning::TxOrigin]);
 
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     compiled.assert_success();
     assert!(compiled.find_first("Warning").is_some());
     assert!(
         !compiled
-            .compiler_output
+            .output()
             .errors
             .iter()
             .any(|err| err.is_warning() && err.message.contains("tx.origin")),
         "{:#?}",
-        compiled.compiler_output.errors
+        compiled.output().errors
     );
 }
 
@@ -168,10 +172,10 @@ fn zksync_pre_1_5_7_can_compile_contract_with_suppressed_warnings() {
 
 #[test]
 fn zksync_can_compile_dapp_detect_changes_in_libs() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .try_init()
-        .ok();
+    // let _ = tracing_subscriber::fmt()
+    //     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    //     .try_init()
+    //     .ok();
     let mut project = TempProject::<ZkSolcCompiler, ZkArtifactOutput>::dapptools().unwrap();
 
     let remapping = project.paths().libraries[0].join("remapping");
@@ -207,13 +211,13 @@ fn zksync_can_compile_dapp_detect_changes_in_libs() {
     assert_eq!(graph.files().len(), 2);
     assert_eq!(graph.files().clone(), HashMap::from([(src, 0), (lib, 1),]));
 
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     assert!(compiled.find_first("Foo").is_some());
     assert!(compiled.find_first("Bar").is_some());
     compiled.assert_success();
 
     // nothing to compile
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     assert!(compiled.find_first("Foo").is_some());
     assert!(compiled.is_unchanged());
 
@@ -236,7 +240,7 @@ fn zksync_can_compile_dapp_detect_changes_in_libs() {
     let graph = Graph::<SolData>::resolve(project.paths()).unwrap();
     assert_eq!(graph.files().len(), 2);
 
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     assert!(compiled.find_first("Foo").is_some());
     assert!(compiled.find_first("Bar").is_some());
     // ensure change is detected
@@ -280,13 +284,13 @@ fn zksync_can_compile_dapp_detect_changes_in_sources() {
     assert_eq!(graph.files().clone(), HashMap::from([(base, 0), (src, 1),]));
     assert_eq!(graph.imported_nodes(1).to_vec(), vec![0]);
 
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     compiled.assert_success();
     assert!(compiled.find_first("DssSpellTest").is_some());
     assert!(compiled.find_first("DssSpellTestBase").is_some());
 
     // nothing to compile
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     assert!(compiled.is_unchanged());
     assert!(compiled.find_first("DssSpellTest").is_some());
     assert!(compiled.find_first("DssSpellTestBase").is_some());
@@ -315,7 +319,7 @@ fn zksync_can_compile_dapp_detect_changes_in_sources() {
     let graph = Graph::<SolData>::resolve(project.paths()).unwrap();
     assert_eq!(graph.files().len(), 2);
 
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     assert!(compiled.find_first("DssSpellTest").is_some());
     assert!(compiled.find_first("DssSpellTestBase").is_some());
     // ensure change is detected
@@ -357,7 +361,7 @@ contract B { }
         )
         .unwrap();
 
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     compiled.assert_success();
 
     let info_dir = project.project().build_info_path();
@@ -366,11 +370,9 @@ contract B { }
     let mut build_info_count = 0;
     for entry in fs::read_dir(info_dir).unwrap() {
         let info =
-            BuildInfo::<ZkSolcInput, foundry_compilers_artifacts::zksolc::CompilerOutput>::read(
-                &entry.unwrap().path(),
-            )
-            .unwrap();
-        assert!(info.output.zksync_solc_version.is_some());
+            BuildInfo::<ZkSolcInput, CompilerOutput<Error, Contract>>::read(&entry.unwrap().path())
+                .unwrap();
+        assert!(info.output.metadata.contains_key("zksyncSolcVersion"));
         build_info_count += 1;
     }
     assert_eq!(build_info_count, 1);
@@ -403,7 +405,7 @@ contract B { }
         )
         .unwrap();
 
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     compiled.assert_success();
 
     let info_dir = project.project().build_info_path();
@@ -412,10 +414,8 @@ contract B { }
     let mut build_info_count = 0;
     for entry in fs::read_dir(info_dir).unwrap() {
         let _info =
-            BuildInfo::<ZkSolcInput, foundry_compilers_artifacts::zksolc::CompilerOutput>::read(
-                &entry.unwrap().path(),
-            )
-            .unwrap();
+            BuildInfo::<ZkSolcInput, CompilerOutput<Error, Contract>>::read(&entry.unwrap().path())
+                .unwrap();
         build_info_count += 1;
     }
     assert_eq!(build_info_count, 1);
@@ -492,9 +492,9 @@ contract Util {}
     let project =
         TempProject::<ZkSolcCompiler, ZkArtifactOutput>::create_new(contracts_dir, inner).unwrap();
 
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     assert!(compiled.has_compiler_errors());
-    assert!(compiled.compiler_output.errors.iter().any(|error| error
+    assert!(compiled.output().errors.iter().any(|error| error
         .formatted_message
         .as_ref()
         .map_or(false, |msg| msg.contains("File outside of allowed directories"))));
@@ -559,25 +559,25 @@ contract Util {}
     let project =
         TempProject::<ZkSolcCompiler, ZkArtifactOutput>::create_new(contracts_dir, inner).unwrap();
 
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     compiled.assert_success();
 }
 
 #[test]
 fn zksync_can_compile_yul_sample() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .try_init()
-        .ok();
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test-data/zksync/yul-sample");
+    // let _ = tracing_subscriber::fmt()
+    //     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    //     .try_init()
+    //     .ok();
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test-data/zksync/yul-sample");
     let paths = ProjectPathsConfig::builder().sources(root);
     let project = TempProject::<ZkSolcCompiler, ZkArtifactOutput>::new(paths).unwrap();
 
-    let compiled = zksync::project_compile(project.project()).unwrap();
+    let compiled = project.compile().unwrap();
     compiled.assert_success();
 
     let simple_store_artifact = compiled
-        .compiled_artifacts
+        .compiled_artifacts()
         .values()
         .find_map(|contracts| {
             contracts

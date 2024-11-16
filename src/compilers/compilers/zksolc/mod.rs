@@ -17,7 +17,7 @@ use itertools::Itertools;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
     str::FromStr,
@@ -145,13 +145,28 @@ impl Compiler for ZkSolcCompiler {
         &self,
         input: &Self::Input,
     ) -> Result<CompilerOutput<Self::CompilationError, Self::CompilerContract>> {
-        let zksolc = self.zksolc(&input)?;
+        let zksolc = self.zksolc(input)?;
 
-        let zk_output = zksolc.compile(&input.input)?;
+        let mut zk_output = zksolc.compile(&input.input)?;
+        let mut metadata = BTreeMap::new();
+        if let Some(solc_version) = zk_output.version.take() {
+            metadata.insert("solcVersion".to_string(), solc_version);
+        }
+        if let Some(solc_long_version) = zk_output.long_version.take() {
+            metadata.insert("solcLongVersion".to_string(), solc_long_version);
+        }
+        if let Some(zk_version) = zk_output.zk_version.take() {
+            metadata.insert("zksolcVersion".to_string(), zk_version);
+        }
+        if let Some(zksync_solc_version) = zk_output.zksync_solc_version {
+            metadata.insert("zksyncSolcVersion".to_string(), zksync_solc_version.to_string());
+        }
+
         Ok(CompilerOutput {
             sources: zk_output.sources,
             errors: zk_output.errors,
             contracts: zk_output.contracts,
+            metadata,
         })
     }
 

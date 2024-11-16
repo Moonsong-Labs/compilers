@@ -2,7 +2,7 @@ use crate::artifacts::zksolc::output_selection::OutputSelection as ZkOutputSelec
 use foundry_compilers::{
     artifacts::{serde_helpers, EvmVersion, Libraries},
     compilers::CompilerSettings,
-    solc,
+    solc, CompilerSettingsRestrictions,
 };
 use foundry_compilers_artifacts::{remappings::Remapping, solc::output_selection::OutputSelection};
 use semver::Version;
@@ -209,7 +209,18 @@ impl Default for ZkSettings {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ZkSolcRestrictions();
+
+impl CompilerSettingsRestrictions for ZkSolcRestrictions {
+    fn merge(self, _other: Self) -> Option<Self> {
+        None
+    }
+}
+
 impl CompilerSettings for ZkSolcSettings {
+    type Restrictions = ZkSolcRestrictions;
+
     fn update_output_selection(&mut self, _f: impl FnOnce(&mut OutputSelection) + Copy) {
         // TODO: see how to support this, noop for now
         //f(&mut self.output_selection)
@@ -272,6 +283,11 @@ impl CompilerSettings for ZkSolcSettings {
     fn with_include_paths(mut self, include_paths: &BTreeSet<PathBuf>) -> Self {
         self.cli_settings.include_paths.clone_from(include_paths);
         self
+    }
+
+    fn satisfies_restrictions(&self, _restrictions: &Self::Restrictions) -> bool {
+        // TODO
+        true
     }
 }
 

@@ -28,10 +28,10 @@ unused-must-use = "deny"
 all = "warn"
 
 [dependencies]
-foundry-compilers = { path = "../foundry-upstream/compilers/crates/compilers", features = ["svm-solc"] }
-foundry-compilers-artifacts = { path = "../foundry-upstream/compilers/crates/artifacts/artifacts", version = "0.11.6" }
-foundry-compilers-artifacts-solc = { path = "../foundry-upstream/compilers/crates/artifacts/solc", version = "0.11.6" }
-foundry-compilers-core = { path = "../foundry-upstream/compilers/crates/core", version = "0.11.6" }
+foundry-compilers = { git = "https://github.com/elfedy/compilers.git", branch = "elfedy-compiler-output", features = ["svm-solc"] }
+foundry-compilers-artifacts = { git = "https://github.com/elfedy/compilers.git", branch = "elfedy-compiler-output" }
+foundry-compilers-artifacts-solc = { git = "https://github.com/elfedy/compilers.git", branch = "elfedy-compiler-output" }
+foundry-compilers-core = { git = "https://github.com/elfedy/compilers.git", branch = "elfedy-compiler-output" }
 
 alloy-json-abi = { version = "0.8", features = ["serde_json"] }
 alloy-primitives = { version = "0.8", features = ["serde", "rand"] }
@@ -70,7 +70,14 @@ reqwest = "0.12.9"
 fd-lock = "4.0.2"
 
 [features]
-
+# TODO: see how tests are run without this as a default feature
+default = ["project-util"]
 project-util = [
     "foundry-compilers-core/project-util",
+    "foundry-compilers/project-util",
 ]
+
+[[test]]
+name = "zksync_test"
+path = "tests/zksync_test.rs"
+required-features = ["project-util"]
