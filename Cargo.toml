@@ -1,8 +1,6 @@
-[workspace]
-members = ["crates/artifacts/*", "crates/core", "crates/compilers"]
-resolver = "2"
-
-[workspace.package]
+[package]
+name = "foundry-compilers-zksync"
+description = "ZKSync extensions for foundry-compilers"
 authors = ["Foundry Maintainers"]
 version = "0.11.6"
 rust-version = "1.70"
@@ -11,31 +9,29 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/foundry-rs/compilers"
 homepage = "https://github.com/foundry-rs/compilers"
 documentation = "https://docs.rs/foundry-compilers"
-description = "Utilities for working with EVM language compilers"
 keywords = ["foundry", "solidity", "solc", "ethereum", "ethers"]
 edition = "2021"
 exclude = [".github/", "scripts/", "test-data/"]
 
-[workspace.lints.clippy]
+[lints.clippy]
 dbg-macro = "warn"
 manual-string-new = "warn"
 uninlined-format-args = "warn"
 use-self = "warn"
 
-[workspace.lints.rust]
+[lints.rust]
 rust-2018-idioms = "deny"
 # unreachable-pub = "warn"
 unused-must-use = "deny"
 
-[workspace.lints.rustdoc]
+[lints.rustdoc]
 all = "warn"
 
-[workspace.dependencies]
-foundry-compilers = { path = "crates/compilers", version = "0.11.6" }
-foundry-compilers-artifacts = { path = "crates/artifacts/artifacts", version = "0.11.6" }
-foundry-compilers-artifacts-solc = { path = "crates/artifacts/solc", version = "0.11.6" }
-foundry-compilers-artifacts-vyper = { path = "crates/artifacts/vyper", version = "0.11.6" }
-foundry-compilers-core = { path = "crates/core", version = "0.11.6" }
+[dependencies]
+foundry-compilers = { git = "https://github.com/elfedy/compilers.git", branch = "elfedy-compiler-output", features = ["svm-solc"] }
+foundry-compilers-artifacts = { git = "https://github.com/elfedy/compilers.git", branch = "elfedy-compiler-output" }
+foundry-compilers-artifacts-solc = { git = "https://github.com/elfedy/compilers.git", branch = "elfedy-compiler-output" }
+foundry-compilers-core = { git = "https://github.com/elfedy/compilers.git", branch = "elfedy-compiler-output" }
 
 alloy-json-abi = { version = "0.8", features = ["serde_json"] }
 alloy-primitives = { version = "0.8", features = ["serde", "rand"] }
@@ -66,5 +62,22 @@ tokio = { version = "1.35", features = ["rt-multi-thread"] }
 snapbox = "0.6.9"
 
 # zksync
-foundry-compilers-artifacts-zksolc = { path = "crates/artifacts/zksolc", version = "0.11.1" }
 globset = "0.4"
+dirs = "5.0.1"
+itertools = "0.13.0"
+fs4 = "0.8.2"
+reqwest = "0.12.9"
+fd-lock = "4.0.2"
+
+[features]
+# TODO: see how tests are run without this as a default feature
+default = ["project-util"]
+project-util = [
+    "foundry-compilers-core/project-util",
+    "foundry-compilers/project-util",
+]
+
+[[test]]
+name = "zksync_test"
+path = "tests/zksync_test.rs"
+required-features = ["project-util"]
