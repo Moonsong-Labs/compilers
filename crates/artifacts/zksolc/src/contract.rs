@@ -1,5 +1,5 @@
 //! Contract related types.
-use crate::EraVM;
+use crate::{EraVM, Evm};
 use alloy_json_abi::JsonAbi;
 use foundry_compilers_artifacts_solc::{
     Bytecode, CompactBytecode, CompactContractBytecode, CompactContractBytecodeCow,
@@ -31,9 +31,12 @@ pub struct Contract {
     /// The contract factory dependencies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub factory_dependencies: Option<BTreeMap<String, String>>,
-    /// EVM-related outputs
+    /// EraVM-related outputs
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub eravm: Option<EraVM>,
+    /// EVM-related outputs (deprecated)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evm: Option<Evm>,
     /// The contract's unlinked libraries
     #[serde(default)]
     pub missing_libraries: Vec<String>,
@@ -69,11 +72,21 @@ impl Contract {
     }
 
     pub fn bytecode(&self) -> Option<Bytecode> {
-        self.eravm.as_ref().and_then(|eravm| eravm.bytecode(self.is_unlinked())).map(|object| {
-            let mut bytecode: Bytecode = object.into();
-            bytecode.link_references = self.link_references();
-            bytecode
-        })
+        self.eravm
+            .as_ref()
+            .and_then(|eravm| eravm.bytecode(self.is_unlinked()))
+            .or_else(|| {
+                self.evm
+                    .as_ref()
+                    .and_then(|evm| evm.bytecode.as_ref())
+                    .map(|bytecode| &bytecode.object)
+                    .cloned()
+            })
+            .map(|object| {
+                let mut bytecode: Bytecode = object.into();
+                bytecode.link_references = self.link_references();
+                bytecode
+            })
     }
 }
 
@@ -115,6 +128,8 @@ impl<'a> From<&'a Contract> for CompactContractRef<'a> {
     fn from(c: &'a Contract) -> Self {
         let (bin, bin_runtime) = if let Some(ref eravm) = c.eravm {
             (eravm.bytecode.as_ref(), eravm.bytecode.as_ref())
+        } else if let Some(ref evm) = c.evm {
+            (evm.bytecode.as_ref().map(|c| &c.object), evm.bytecode.as_ref().map(|c| &c.object))
         } else {
             (None, None)
         };
