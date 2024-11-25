@@ -6,8 +6,20 @@ use foundry_compilers_artifacts::{
 };
 use serde::{Deserialize, Serialize};
 
+/// This will serialize the bytecode data without a `0x` prefix
+///
+/// Equivalent of solc artifact bytecode's
+/// [`serialize_bytecode_without_prefix`](foundry_compilers_artifacts::solc::bytecode::serialize_bytecode_without_prefix)
+pub fn serialize_bytes_without_prefix<S>(code: &Bytes, s: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    s.serialize_str(&alloy_primitives::hex::encode(code))
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ZkArtifactBytecode {
+    #[serde(serialize_with = "serialize_bytes_without_prefix")]
     object: Bytes,
     is_unlinked: bool,
 
