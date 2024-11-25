@@ -72,3 +72,25 @@ impl From<ZkArtifactBytecode> for CompactDeployedBytecode {
         Self { bytecode: Some(bcode.into()), immutable_references: BTreeMap::default() }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    /// https://github.com/Moonsong-Labs/compilers/pull/44
+    fn serialized_bytecode_is_not_prefixed() {
+        let object = Bytes::from(vec![0xDEu8, 0xAD, 0xBE, 0xEF]);
+        let sample = ZkArtifactBytecode { object, is_unlinked: false, missing_libraries: vec![] };
+
+        let json_str =
+            serde_json::to_string(&sample).expect("able to serialize artifact bytecode as json");
+
+        let deserialized: serde_json::Value =
+            serde_json::from_str(&json_str).expect("able to deserialize json");
+
+        let bytecode_str = deserialized["object"].as_str().expect(".object to be a string");
+
+        assert!(!bytecode_str.starts_with("0x"));
+    }
+}
