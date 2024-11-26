@@ -236,4 +236,5 @@ pub struct VersionedContract {
     pub contract: Contract,
     pub version: Version,
     pub build_id: String,
+    pub profile: String,
 }

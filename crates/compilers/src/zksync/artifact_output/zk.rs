@@ -211,7 +211,9 @@ impl ZkArtifactOutput {
         let mut taken_paths_lowercase = ctx
             .existing_artifacts
             .values()
-            .flat_map(|artifacts| artifacts.values().flat_map(|artifacts| artifacts.values()))
+            .flat_map(|artifacts| artifacts.values())
+            .flat_map(|artifacts| artifacts.values())
+            .flat_map(|artifacts| artifacts.values())
             .map(|a| a.path.to_slash_lossy().to_lowercase())
             .collect::<HashSet<_>>();
 
@@ -222,6 +224,10 @@ impl ZkArtifactOutput {
         });
         for file in files {
             for (name, versioned_contracts) in &contracts[file] {
+                let unique_versions =
+                    versioned_contracts.iter().map(|c| &c.version).collect::<HashSet<_>>();
+                let unique_profiles =
+                    versioned_contracts.iter().map(|c| &c.profile).collect::<HashSet<_>>();
                 for contract in versioned_contracts {
                     // track `SourceFile`s that can be mapped to contracts
                     let source_file = sources.find_file_and_version(file, &contract.version);
@@ -237,7 +243,9 @@ impl ZkArtifactOutput {
                         name,
                         layout.artifacts.as_path(),
                         &contract.version,
-                        versioned_contracts.len() > 1,
+                        &contract.profile,
+                        unique_versions.len() > 1,
+                        unique_profiles.len() > 1,
                     );
 
                     taken_paths_lowercase.insert(artifact_path.to_slash_lossy().to_lowercase());
@@ -261,6 +269,7 @@ impl ZkArtifactOutput {
                         file: artifact_path,
                         version: contract.version.clone(),
                         build_id: contract.build_id.clone(),
+                        profile: contract.profile.clone(),
                     };
 
                     artifacts

@@ -7,7 +7,7 @@ use crate::{
     output::Builds,
     report,
     resolver::{parse::SolData, GraphEdges},
-    zksolc::input::ZkSolcVersionedInput,
+    zksolc::{input::ZkSolcVersionedInput, ZkSolcSettings},
     zksync::{
         self,
         artifact_output::zk::{ZkArtifactOutput, ZkContractArtifact},
@@ -20,7 +20,8 @@ use semver::Version;
 use std::{collections::HashMap, path::PathBuf, time::Instant};
 
 /// A set of different Solc installations with their version and the sources to be compiled
-pub(crate) type VersionedSources<L> = HashMap<L, HashMap<Version, Sources>>;
+pub(crate) type VersionedSources<'a, L> =
+    HashMap<L, Vec<(Version, Sources, (&'a str, &'a ZkSolcSettings))>>;
 
 #[derive(Debug)]
 pub struct ProjectCompiler<'a> {
@@ -28,7 +29,7 @@ pub struct ProjectCompiler<'a> {
     edges: GraphEdges<SolData>,
     project: &'a Project<ZkSolcCompiler, ZkArtifactOutput>,
     /// how to compile all the sources
-    sources: CompilerSources,
+    sources: CompilerSources<'a>,
 }
 
 impl<'a> ProjectCompiler<'a> {
@@ -52,11 +53,7 @@ impl<'a> ProjectCompiler<'a> {
             sources.retain(|f, _| filter.is_match(f))
         }
         let graph = Graph::resolve_sources(&project.paths, sources)?;
-        let (sources, edges) = graph.into_sources_by_version(
-            project.offline,
-            &project.locked_versions,
-            &project.compiler,
-        )?;
+        let (sources, edges) = graph.into_sources_by_version(project)?;
         // If there are multiple different versions, and we can use multiple jobs we can compile
         // them in parallel.
         let sources = CompilerSources { sources };
@@ -102,7 +99,7 @@ impl<'a> ProjectCompiler<'a> {
 #[derive(Debug)]
 struct PreprocessedState<'a> {
     /// Contains all the sources to compile.
-    sources: CompilerSources,
+    sources: CompilerSources<'a>,
 
     /// Cache that holds `CacheEntry` objects if caching is enabled and the project is recompiled
     cache: ArtifactsCache<'a, ZkArtifactOutput, ZkSolcCompiler>,
@@ -242,11 +239,11 @@ impl<'a> ArtifactsState<'a> {
 
 /// Determines how the `solc <-> sources` pairs are executed
 #[derive(Debug, Clone)]
-struct CompilerSources {
-    sources: VersionedSources<SolcLanguage>,
+struct CompilerSources<'a> {
+    sources: VersionedSources<'a, SolcLanguage>,
 }
 
-impl CompilerSources {
+impl<'a> CompilerSources<'a> {
     /// Converts all `\\` separators to `/`
     ///
     /// This effectively ensures that `solc` can find imported files like `/src/Cheats.sol` in the
@@ -273,9 +270,9 @@ impl CompilerSources {
     fn filter(&mut self, cache: &mut ArtifactsCache<'_, ZkArtifactOutput, ZkSolcCompiler>) {
         cache.remove_dirty_sources();
         for versioned_sources in self.sources.values_mut() {
-            for (version, sources) in versioned_sources {
+            for (version, sources, (profile, _)) in versioned_sources {
                 trace!("Filtering {} sources for {}", sources.len(), version);
-                cache.filter(sources, version);
+                cache.filter(sources, version, profile);
                 trace!(
                     "Detected {} sources to compile {:?}",
                     sources.dirty().count(),
@@ -301,7 +298,7 @@ impl CompilerSources {
 
         let mut jobs = Vec::new();
         for (language, versioned_sources) in self.sources {
-            for (version, sources) in versioned_sources {
+            for (version, sources, (profile, opt_settings)) in versioned_sources {
                 if sources.is_empty() {
                     // nothing to compile
                     trace!("skip {} for empty sources set", version);
@@ -310,7 +307,7 @@ impl CompilerSources {
 
                 // depending on the composition of the filtered sources, the output selection can be
                 // optimized
-                let mut opt_settings = project.settings.clone();
+                let mut opt_settings = opt_settings.clone();
                 let actually_dirty =
                     sparse_output.sparse_sources(&sources, &mut opt_settings, graph);
 
@@ -339,7 +336,7 @@ impl CompilerSources {
 
                 input.strip_prefix(project.paths.root.as_path());
 
-                jobs.push((input, actually_dirty));
+                jobs.push((input, profile, actually_dirty));
             }
         }
 
@@ -347,7 +344,7 @@ impl CompilerSources {
 
         let mut aggregated = AggregatedCompilerOutput::default();
 
-        for (input, mut output, actually_dirty) in results {
+        for (input, mut output, profile, actually_dirty) in results {
             let version = input.version();
 
             // Mark all files as seen by the compiler
@@ -364,7 +361,7 @@ impl CompilerSources {
             );
             output.join_all(project.paths.root.as_path());
 
-            aggregated.extend(version.clone(), build_info, output);
+            aggregated.extend(version.clone(), build_info, profile, output);
         }
 
         Ok(aggregated)
@@ -372,12 +369,12 @@ impl CompilerSources {
 }
 
 /// Compiles the input set sequentially and returns an aggregated set of the solc `CompilerOutput`s
-fn compile_sequential(
+fn compile_sequential<'a>(
     zksolc_compiler: &ZkSolcCompiler,
-    jobs: Vec<(ZkSolcVersionedInput, Vec<PathBuf>)>,
-) -> Result<Vec<(ZkSolcVersionedInput, CompilerOutput, Vec<PathBuf>)>> {
+    jobs: Vec<(ZkSolcVersionedInput, &'a str, Vec<PathBuf>)>,
+) -> Result<Vec<(ZkSolcVersionedInput, CompilerOutput, &'a str, Vec<PathBuf>)>> {
     jobs.into_iter()
-        .map(|(input, actually_dirty)| {
+        .map(|(input, profile, actually_dirty)| {
             let zksolc = zksolc_compiler.zksolc(&input)?;
 
             let (compiler_name, version) =
@@ -394,7 +391,7 @@ fn compile_sequential(
 
             report::compiler_success(&compiler_name, &version, &start.elapsed());
 
-            Ok((input, output, actually_dirty))
+            Ok((input, output, profile, actually_dirty))
         })
         .collect()
 }

@@ -1,6 +1,6 @@
 use crate::{
     artifacts::{serde_helpers, EvmVersion, Libraries},
-    compilers::CompilerSettings,
+    compilers::{restrictions::CompilerSettingsRestrictions, CompilerSettings},
     solc, OutputSelection,
 };
 use foundry_compilers_artifacts::{
@@ -63,6 +63,17 @@ impl FromStr for ZkSolcError {
             "sendtransfer" => Ok(Self::SendTransfer),
             s => Err(format!("Unknown zksolc error: {s}")),
         }
+    }
+}
+
+// TODO(zk): implement fully
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ZkRestrictions;
+
+impl CompilerSettingsRestrictions for ZkRestrictions {
+    //TODO(zk): implement fully
+    fn merge(self, _other: Self) -> Option<Self> {
+        Some(self)
     }
 }
 
@@ -211,6 +222,8 @@ impl Default for ZkSettings {
 }
 
 impl CompilerSettings for ZkSolcSettings {
+    type Restrictions = ZkRestrictions;
+
     fn update_output_selection(&mut self, _f: impl FnOnce(&mut OutputSelection) + Copy) {
         // TODO: see how to support this, noop for now
         //f(&mut self.output_selection)
@@ -273,6 +286,11 @@ impl CompilerSettings for ZkSolcSettings {
     fn with_include_paths(mut self, include_paths: &BTreeSet<PathBuf>) -> Self {
         self.cli_settings.include_paths.clone_from(include_paths);
         self
+    }
+
+    fn satisfies_restrictions(&self, _restrictions: &Self::Restrictions) -> bool {
+        // TODO(zk): implement fully
+        true
     }
 }
 

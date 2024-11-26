@@ -333,6 +333,7 @@ impl AggregatedCompilerOutput {
         &mut self,
         version: Version,
         build_info: RawBuildInfo<SolcLanguage>,
+        profile: &str,
         output: CompilerOutput,
     ) {
         let build_id = build_info.id.clone();
@@ -347,6 +348,7 @@ impl AggregatedCompilerOutput {
                 source_file,
                 version: version.clone(),
                 build_id: build_id.clone(),
+                profile: profile.to_string(),
             });
         }
 
@@ -358,6 +360,7 @@ impl AggregatedCompilerOutput {
                     contract,
                     version: version.clone(),
                     build_id: build_id.clone(),
+                    profile: profile.to_string(),
                 });
             }
         }
