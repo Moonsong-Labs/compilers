@@ -36,6 +36,8 @@ pub use config::{PathStyle, ProjectPaths, ProjectPathsConfig, SolcConfig};
 mod filter;
 pub use filter::{FileFilter, SparseOutputFilter, TestFileFilter};
 
+pub mod zksync;
+
 pub mod report;
 
 /// Utilities for creating, mocking and testing of (temporary) projects
