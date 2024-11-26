@@ -368,11 +368,14 @@ impl<'a> CompilerSources<'a> {
     }
 }
 
+type CompilationResult<'a> =
+    Result<Vec<(ZkSolcVersionedInput, CompilerOutput, &'a str, Vec<PathBuf>)>>;
+
 /// Compiles the input set sequentially and returns an aggregated set of the solc `CompilerOutput`s
 fn compile_sequential<'a>(
     zksolc_compiler: &ZkSolcCompiler,
     jobs: Vec<(ZkSolcVersionedInput, &'a str, Vec<PathBuf>)>,
-) -> Result<Vec<(ZkSolcVersionedInput, CompilerOutput, &'a str, Vec<PathBuf>)>> {
+) -> CompilationResult<'a> {
     jobs.into_iter()
         .map(|(input, profile, actually_dirty)| {
             let zksolc = zksolc_compiler.zksolc(&input)?;
