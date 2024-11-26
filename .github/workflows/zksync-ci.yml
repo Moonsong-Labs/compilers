@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-    TARGET_RUST_VERSION: "stable-1.82.0"
+    TARGET_RUST_VERSION: "1.82.0"
     CARGO_TERM_COLOR: always
 
 jobs:
